@@ -1,0 +1,1051 @@
+<title>無編碼器吸塵車</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700;900&display=swap">
+<style>
+/* Layout: engineering notebook — sticky contents rail on the left, one reading column, diagrams break out to full column width */
+:root {
+  --paper: #f2f4f6;
+  --sheet: #fbfcfd;
+  --ink: #17212c;
+  --muted: #586777;
+  --line: #cfd6de;
+  --grid: #e3e8ed;
+  --accent: #cf4a12;     /* route / highlights */
+  --pi: #2b59c3;         /* Raspberry Pi layer */
+  --mcu: #0d7f71;        /* Arduino layer */
+  --hw: #9a6a14;         /* sensors & actuators */
+  --pi-bg: #e6ecf9;
+  --mcu-bg: #e1f1ee;
+  --hw-bg: #f4ecdc;
+  --accent-bg: #fbe6dc;
+  --good: #23824a;
+  --warn: #b7791f;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --s-1: 0.8125rem; --s0: 1rem; --s1: 1.125rem; --s2: 1.375rem; --s3: 1.75rem; --s4: 2.5rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #10161d; --sheet: #161e27; --ink: #e4eaf0; --muted: #94a3b3;
+    --line: #2c3946; --grid: #1c2631; --accent: #f0743c;
+    --pi: #7d9ff0; --mcu: #4cc3b1; --hw: #e0aa4a;
+    --pi-bg: #1b2740; --mcu-bg: #12302c; --hw-bg: #33291a; --accent-bg: #3a2016;
+    --good: #5cc884; --warn: #e0aa4a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #10161d; --sheet: #161e27; --ink: #e4eaf0; --muted: #94a3b3;
+  --line: #2c3946; --grid: #1c2631; --accent: #f0743c;
+  --pi: #7d9ff0; --mcu: #4cc3b1; --hw: #e0aa4a;
+  --pi-bg: #1b2740; --mcu-bg: #12302c; --hw-bg: #33291a; --accent-bg: #3a2016;
+  --good: #5cc884; --warn: #e0aa4a;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  background: var(--paper);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--s0);
+  line-height: 1.75;
+  padding-inline: 16px;
+}
+.wrap {
+  max-width: 1240px; margin: 0 auto; padding-block: 40px 96px;
+  display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px;
+}
+@media (max-width: 960px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 0; padding-block: 24px 64px; } }
+
+/* contents rail */
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: var(--s-1); }
+nav.toc .label { font-family: var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: toc; }
+nav.toc a { display: grid; grid-template-columns: 28px 1fr; color: var(--ink); text-decoration: none; padding: 4px 8px; border-radius: 4px; }
+nav.toc a span:first-child { font-family: var(--font-mono); color: var(--muted); }
+nav.toc a:hover, nav.toc a:focus-visible { background: var(--sheet); outline: none; }
+nav.toc a.part { margin-top: 10px; color: var(--muted); font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: .06em; }
+@media (max-width: 960px) { nav.toc { display: none; } }
+
+main { min-width: 0; }
+.sheet { background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; padding: clamp(20px, 4vw, 48px); }
+
+header.cover { display: grid; gap: 14px; padding-bottom: 32px; border-bottom: 2px solid var(--ink); margin-bottom: 8px; }
+.eyebrow { font-family: var(--font-mono); font-size: var(--s-1); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 900; line-height: 1.15; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h1 em { font-style: normal; color: var(--accent); }
+.lede { font-size: var(--s1); color: var(--muted); max-width: 46em; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 24px; font-family: var(--font-mono); font-size: var(--s-1); color: var(--muted); }
+.meta b { color: var(--ink); font-weight: 600; }
+
+section { padding-block: 48px 8px; border-bottom: 1px dashed var(--line); }
+section:last-of-type { border-bottom: 0; }
+.part-head { margin-top: 56px; padding: 14px 18px; border-left: 4px solid var(--ink); background: var(--paper); font-family: var(--font-mono); font-size: var(--s-1); letter-spacing: .06em; }
+.part-head b { font-family: var(--font-body); font-size: var(--s1); letter-spacing: 0; display: block; }
+h2 { font-size: var(--s3); font-weight: 900; line-height: 1.3; margin: 4px 0 12px; text-wrap: balance; }
+h2 .num { font-family: var(--font-mono); font-weight: 500; color: var(--accent); margin-right: 10px; font-size: .8em; }
+h3 { font-size: var(--s1); font-weight: 700; margin: 32px 0 8px; }
+p, li { max-width: 44em; }
+p { margin: 0 0 14px; }
+ul, ol { padding-left: 1.3em; margin: 0 0 14px; }
+li { margin-bottom: 4px; }
+code, .mono { font-family: var(--font-mono); font-size: .9em; }
+:not(pre) > code { background: var(--paper); border: 1px solid var(--line); padding: 0 5px; border-radius: 3px; white-space: nowrap; }
+strong { font-weight: 700; }
+.say { font-size: var(--s1); font-weight: 500; border-left: 3px solid var(--accent); padding: 4px 0 4px 16px; margin: 8px 0 20px; max-width: 40em; }
+
+.note { display: grid; grid-template-columns: auto 1fr; gap: 12px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; margin: 16px 0; max-width: 46em; font-size: .95rem; }
+.note .tag { font-family: var(--font-mono); font-size: var(--s-1); font-weight: 600; color: var(--pi); white-space: nowrap; padding-top: 2px; }
+.note.todo .tag { color: var(--accent); }
+.note p:last-child, .note ul:last-child { margin-bottom: 0; }
+
+.fig { margin: 20px 0 24px; overflow-x: auto; }
+.fig svg { display: block; width: 100%; height: auto; min-width: 640px; }
+.fig.narrow svg { min-width: 0; max-width: 520px; }
+.fig figcaption { font-size: var(--s-1); color: var(--muted); margin-top: 8px; }
+
+.tbl { overflow-x: auto; margin: 12px 0 20px; }
+table { border-collapse: collapse; width: 100%; font-size: .9375rem; }
+th, td { text-align: left; vertical-align: top; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+th { font-weight: 700; font-size: var(--s-1); color: var(--muted); letter-spacing: .04em; border-bottom: 2px solid var(--ink); white-space: nowrap; }
+td.num, th.num { font-variant-numeric: tabular-nums; }
+td code { white-space: nowrap; }
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin: 16px 0 20px; }
+.col { border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; background: var(--sheet); }
+.col h4 { margin: 0 0 8px; font-size: var(--s0); }
+.col ul { margin: 0; }
+.col.bad { border-top: 3px solid var(--muted); }
+.col.goodc { border-top: 3px solid var(--good); }
+
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 18px; font-size: .9rem; }
+.chip { border: 1px solid var(--line); background: var(--sheet); border-radius: 4px; padding: 3px 10px; white-space: nowrap; }
+.chip.pi { border-color: var(--pi); background: var(--pi-bg); }
+.chip.mcu { border-color: var(--mcu); background: var(--mcu-bg); }
+.chip.hw { border-color: var(--hw); background: var(--hw-bg); }
+.chip.ac { border-color: var(--accent); background: var(--accent-bg); }
+.arrow { color: var(--muted); font-family: var(--font-mono); }
+.chips .lab { font-family: var(--font-mono); font-size: var(--s-1); color: var(--muted); }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 16px 0 20px; }
+.stat { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+.stat b { display: block; font-family: var(--font-mono); font-size: var(--s2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat span { font-size: var(--s-1); color: var(--muted); }
+
+pre { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; overflow-x: auto; font-family: var(--font-mono); font-size: .85rem; line-height: 1.6; margin: 12px 0 20px; }
+pre .c { color: var(--muted); }
+pre .k { color: var(--pi); font-weight: 600; }
+pre .s { color: var(--mcu); }
+
+.nodes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 16px 0 20px; }
+.node { border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; background: var(--sheet); display: grid; gap: 6px; align-content: start; }
+.node h4 { margin: 0; font-family: var(--font-mono); font-size: var(--s0); color: var(--pi); }
+.node .what { margin: 0; font-size: .9375rem; }
+.node dl { display: grid; grid-template-columns: 44px 1fr; gap: 2px 8px; margin: 4px 0 0; font-size: var(--s-1); }
+.node dt { color: var(--muted); }
+.node dd { margin: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.badge { justify-self: start; font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: .04em; border-radius: 3px; padding: 1px 7px; border: 1px solid currentColor; }
+.badge.mid { color: var(--mcu); }
+.badge.fin { color: var(--accent); }
+
+.seg { display: inline-flex; border: 1px solid var(--ink); border-radius: 5px; overflow: hidden; margin: 6px 0 4px; }
+.seg button { font: inherit; font-size: .9rem; background: var(--sheet); color: var(--ink); border: 0; padding: 6px 16px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--sheet); }
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+/* SVG tokens */
+svg text { font-family: var(--font-body); fill: var(--ink); }
+svg .t-mono { font-family: var(--font-mono); }
+svg .t-muted { fill: var(--muted); }
+svg .t-pi { fill: var(--pi); } svg .t-mcu { fill: var(--mcu); } svg .t-hw { fill: var(--hw); } svg .t-ac { fill: var(--accent); }
+svg .halo { paint-order: stroke; stroke: var(--sheet); stroke-width: 5px; stroke-linejoin: round; }
+svg .box-pi { fill: var(--pi-bg); stroke: var(--pi); stroke-width: 1.5; }
+svg .box-mcu { fill: var(--mcu-bg); stroke: var(--mcu); stroke-width: 1.5; }
+svg .box-hw { fill: var(--hw-bg); stroke: var(--hw); stroke-width: 1.5; }
+svg .box-user { fill: var(--sheet); stroke: var(--ink); stroke-width: 1.5; }
+svg .box-ext { fill: var(--sheet); stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; }
+svg .ln { stroke: var(--ink); stroke-width: 1.4; fill: none; }
+svg .ln-pi { stroke: var(--pi); stroke-width: 1.6; fill: none; }
+svg .ln-mcu { stroke: var(--mcu); stroke-width: 1.6; fill: none; }
+svg .ln-hw { stroke: var(--hw); stroke-width: 1.6; fill: none; }
+svg .ln-ext { stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+svg .band { fill: var(--paper); }
+svg .field { fill: var(--sheet); stroke: var(--ink); stroke-width: 3; }
+svg .patch { fill: var(--pi-bg); stroke: var(--pi); stroke-width: 1; }
+svg .patch-green { fill: var(--mcu-bg); stroke: var(--mcu); stroke-width: 1.5; }
+svg .patch-bad { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+svg .route { stroke: var(--accent); stroke-width: 2.6; fill: none; stroke-linejoin: round; }
+svg .route-dot { fill: var(--accent); }
+svg .zone { fill: none; stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 4 3; }
+svg .target { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 2 3; }
+svg .beam { fill: var(--hw); fill-opacity: .16; stroke: var(--hw); stroke-width: 1; }
+svg .robot { fill: var(--ink); }
+svg .gridl { stroke: var(--grid); stroke-width: 1; }
+svg .fill-sheet { fill: var(--sheet); }
+svg .arrowhead { fill: var(--ink); }
+svg .arrowhead-ac { fill: var(--accent); }
+svg .arrowhead-pi { fill: var(--pi); }
+svg .arrowhead-mcu { fill: var(--mcu); }
+svg .arrowhead-hw { fill: var(--hw); }
+svg .arrowhead-ext { fill: var(--muted); }
+
+#rosgraph .fin { transition: opacity .25s; }
+#rosgraph.mid .fin { opacity: .18; }
+#rosgraph .midonly { opacity: 0; transition: opacity .25s; }
+#rosgraph.mid .midonly { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { #rosgraph .fin, #rosgraph .midonly { transition: none; } }
+
+/* gantt */
+.gantt { overflow-x: auto; margin: 16px 0 20px; }
+.g { min-width: 760px; display: grid; grid-template-columns: 190px 1fr; font-size: .85rem; }
+.g .hd { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); position: relative; height: 26px; border-bottom: 2px solid var(--ink); }
+.g .hd span { position: absolute; top: 4px; transform: translateX(2px); white-space: nowrap; }
+.g .name { padding: 5px 10px 5px 0; border-bottom: 1px solid var(--grid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.g .name.grp { font-weight: 700; padding-top: 12px; }
+.g .track { position: relative; border-bottom: 1px solid var(--grid); background-image: linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: calc(100% / 12) 100%; }
+.g .bar { position: absolute; top: 7px; height: 14px; border-radius: 3px; }
+.g .bar.sw { background: var(--pi); } .g .bar.fw { background: var(--mcu); } .g .bar.me { background: var(--hw); } .g .bar.it { background: var(--ink); }
+.g .ms { position: absolute; top: 6px; width: 12px; height: 12px; background: var(--accent); transform: translateX(-6px) rotate(45deg); }
+.g .mslab { position: absolute; top: 3px; font-family: var(--font-mono); font-size: 0.72rem; white-space: nowrap; color: var(--accent); }
+.g .today { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed var(--accent); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: var(--s-1); color: var(--muted); margin-top: 6px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
+
+.qs { counter-reset: q; list-style: none; padding: 0; display: grid; gap: 10px; }
+.qs li { counter-increment: q; display: grid; grid-template-columns: 34px 1fr; max-width: 46em; }
+.qs li::before { content: "Q" counter(q); font-family: var(--font-mono); color: var(--accent); font-weight: 600; }
+.qs .who { font-family: var(--font-mono); font-size: var(--s-1); color: var(--muted); margin-left: 6px; }
+
+footer { margin-top: 40px; font-size: var(--s-1); color: var(--muted); font-family: var(--font-mono); }
+a { color: var(--pi); }
+</style>
+
+<div class="wrap">
+  <nav class="toc" aria-label="目錄">
+    <div class="label">Contents</div>
+    <ol>
+      <li><a href="#task"><span>00</span><span>任務與策略</span></a></li>
+      <li><a class="part" href="#part-ee">機電架構</a></li>
+      <li><a href="#block"><span>01</span><span>系統方塊圖</span></a></li>
+      <li><a href="#power"><span>02</span><span>電源架構</span></a></li>
+      <li><a href="#loc"><span>03</span><span>無編碼器定位</span></a></li>
+      <li><a href="#route"><span>04</span><span>路線與流程</span></a></li>
+      <li><a href="#fw"><span>05</span><span>Arduino 韌體</span></a></li>
+      <li><a href="#stream"><span>06</span><span>影像串流</span></a></li>
+      <li><a class="part" href="#part-ros">軟體架構</a></li>
+      <li><a href="#ros-what"><span>07</span><span>ROS2 是什麼</span></a></li>
+      <li><a href="#ros-why"><span>08</span><span>為什麼用 ROS2</span></a></li>
+      <li><a href="#ros-graph"><span>09</span><span>Node 與 Topic</span></a></li>
+      <li><a class="part" href="#part-pm">專案</a></li>
+      <li><a href="#mech"><span>10</span><span>給機構組的需求</span></a></li>
+      <li><a href="#plan"><span>11</span><span>時程與分工</span></a></li>
+      <li><a href="#risk"><span>12</span><span>困難與對策</span></a></li>
+      <li><a href="#qs"><span>13</span><span>待討論問題</span></a></li>
+    </ol>
+  </nav>
+
+  <main class="sheet">
+    <header class="cover">
+      <div class="eyebrow">機電整合（四）· 第一次報告前的組內說明 · v0.1</div>
+      <h1>沒有編碼器，<em>用牆壁當尺</em>的自走吸塵車</h1>
+      <p class="lede">這份頁面說明我們的機電與軟體架構：車子由哪些元件組成、它們怎麼溝通、沒有編碼器要怎麼知道自己在哪裡，以及為什麼軟體要用 ROS2。機構設計由其他組員另外發想，第 10 節列出電控這邊對機構的需求。</p>
+      <div class="meta">
+        <span>Pi 4 <b>ROS2 Humble</b></span>
+        <span>MCU <b>Arduino Uno</b></span>
+        <span>感測器 <b>MPU6050 · HC-SR04 ×2 · C310</b></span>
+        <span>期中 <b>11/13</b></span>
+        <span>期末 <b>12/11</b></span>
+      </div>
+    </header>
+
+    <!-- 00 -->
+    <section id="task">
+      <div class="eyebrow">Task analysis</div>
+      <h2><span class="num">00</span>任務與策略</h2>
+      <p class="say">所有設計都從評分標準推導出來：速度分數最高 65 分，比吸力的 32 分還重要，所以要追求「路線短、行為穩定」。</p>
+
+      <figure class="fig narrow">
+        <svg viewBox="-70 -30 440 400" role="img" aria-labelledby="field-t">
+          <title id="field-t">期末場地俯視圖：3m×3m，四角與中央有紙片區，右上為扣分區</title>
+          <defs>
+            <marker id="ah-ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-ac"/></marker>
+          </defs>
+          <rect x="0" y="0" width="300" height="300" class="field"/>
+          <rect x="-4" y="132" width="8" height="36" class="fill-sheet"/>
+          <rect x="240" y="0" width="60" height="60" class="zone"/>
+          <text x="236" y="74" font-size="9" class="t-ac" text-anchor="start">60cm 辨識區</text>
+          <rect x="15" y="15" width="15" height="15" class="patch"/>
+          <rect x="15" y="270" width="15" height="15" class="patch"/>
+          <rect x="270" y="270" width="15" height="15" class="patch"/>
+          <rect x="270" y="15" width="15" height="15" class="patch-bad"/>
+          <rect x="142.5" y="142.5" width="15" height="15" class="patch-green"/>
+          <circle cx="8" cy="8" r="9" class="target"/><circle cx="292" cy="8" r="9" class="target"/>
+          <circle cx="8" cy="292" r="9" class="target"/><circle cx="292" cy="292" r="9" class="target"/>
+          <text x="36" y="27" font-size="10">TL +0.4/張</text>
+          <text x="36" y="282" font-size="10">BL +0.4/張</text>
+          <text x="264" y="282" font-size="10" text-anchor="end">BR +0.4/張</text>
+          <text x="264" y="27" font-size="10" text-anchor="end" class="t-ac">TR −0.5/張</text>
+          <text x="150" y="176" font-size="10" text-anchor="middle" class="t-mcu">中央（綠）必吸，否則 −10</text>
+          <text x="-8" y="126" font-size="10" text-anchor="end">入口</text>
+          <text x="-8" y="180" font-size="10" text-anchor="end">出口</text>
+          <path d="M-60,141 L-6,141" class="route" marker-end="url(#ah-ac)"/>
+          <path d="M-6,159 L-60,159" class="route" marker-end="url(#ah-ac)"/>
+          <text x="150" y="-12" font-size="10" text-anchor="middle" class="t-muted t-mono">300 cm</text>
+          <text x="318" y="150" font-size="10" text-anchor="middle" class="t-muted t-mono" transform="rotate(90 318 150)">300 cm</text>
+          <text x="150" y="325" font-size="9" text-anchor="middle" class="t-muted">虛線圓：辨識標的（紅色圓 Ø20cm）可能的位置，隨機放在其中一個角落</text>
+          <text x="150" y="340" font-size="9" text-anchor="middle" class="t-muted">紙片區 15×15cm，距牆 15cm，中心點距牆約 22.5cm</text>
+        </svg>
+      </figure>
+
+      <div class="tbl"><table>
+        <thead><tr><th>評分項目（期末自走）</th><th class="num">分數</th><th>對設計的意義</th></tr></thead>
+        <tbody>
+          <tr><td>速度：2:30 內離場</td><td class="num">65</td><td>最重要。路線要短，不做探索</td></tr>
+          <tr><td>吸力：正分紙片共 80 張</td><td class="num">32</td><td>至少要吸 30 張，否則時間分數 ×0.8</td></tr>
+          <tr><td>辨識：進入辨識區並做出反應</td><td class="num">+10 / −10</td><td>完全沒進辨識區會倒扣</td></tr>
+          <tr><td>中央綠色紙片沒吸到</td><td class="num">−10</td><td>一定要開到場地正中央</td></tr>
+          <tr><td>右上紅色紙片</td><td class="num">−0.5/張</td><td>經過時要暫停吸塵</td></tr>
+          <tr><td>撞牆、人工調整</td><td class="num">−1、−2/次</td><td>行為要穩定可重複</td></tr>
+        </tbody>
+      </table></div>
+
+      <div class="note"><span class="tag">限制</span><p>不能裝輪子編碼器，也不能另外加感測器。我們手上只有課程提供的 <strong>MPU6050（IMU）</strong>、<strong>兩顆 HC-SR04 超音波</strong>，加上攝影機。</p></div>
+      <p><strong>策略：</strong>場地是四面有牆的方框，紙片的位置固定，所以把牆壁當成尺。車子只走平行牆壁的直線，用超音波量到牆的距離判斷自己在哪裡，用陀螺儀維持方向。詳細做法見第 03 節。</p>
+    </section>
+
+    <div class="part-head" id="part-ee">PART A<b>機電架構</b></div>
+
+    <!-- 01 -->
+    <section id="block">
+      <div class="eyebrow">Block diagram</div>
+      <h2><span class="num">01</span>系統方塊圖</h2>
+      <p class="say">Pi 負責「想」：影像、決策、通訊。Arduino 負責「即時控制」：準時讀感測器、輸出 PWM。兩邊只靠一條序列埠溝通。</p>
+
+      <figure class="fig">
+        <svg viewBox="0 0 960 610" role="img" aria-labelledby="blk-t">
+          <title id="blk-t">系統方塊圖：使用者端、主控 Pi 4、即時控制 Arduino Uno、感測器與致動器四層</title>
+          <defs>
+            <marker id="b-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker>
+            <marker id="b-pi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-pi"/></marker>
+            <marker id="b-mcu" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-mcu"/></marker>
+            <marker id="b-hw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-hw"/></marker>
+          </defs>
+          <rect x="0" y="0" width="960" height="96" class="band"/>
+          <rect x="0" y="120" width="960" height="110" class="band"/>
+          <rect x="0" y="254" width="960" height="110" class="band"/>
+          <rect x="0" y="388" width="960" height="222" class="band"/>
+          <text x="12" y="20" font-size="11" class="t-mono t-muted">使用者端</text>
+          <text x="12" y="140" font-size="11" class="t-mono t-muted">主控 · 高階決策</text>
+          <text x="12" y="274" font-size="11" class="t-mono t-muted">即時控制</text>
+          <text x="12" y="408" font-size="11" class="t-mono t-muted">感測器與致動器</text>
+
+          <rect x="360" y="24" width="240" height="56" rx="6" class="box-user"/>
+          <text x="480" y="48" font-size="15" font-weight="700" text-anchor="middle">筆電／手機瀏覽器</text>
+          <text x="480" y="68" font-size="11" text-anchor="middle" class="t-muted">看畫面、遙控、緊急停止</text>
+
+          <rect x="360" y="142" width="240" height="70" rx="6" class="box-pi"/>
+          <text x="480" y="170" font-size="16" font-weight="700" text-anchor="middle" class="t-pi">Raspberry Pi 4</text>
+          <text x="480" y="192" font-size="11" text-anchor="middle" class="t-mono">ROS2 Humble · MediaMTX</text>
+
+          <rect x="100" y="142" width="170" height="70" rx="6" class="box-hw"/>
+          <text x="185" y="170" font-size="15" font-weight="700" text-anchor="middle">Logitech C310</text>
+          <text x="185" y="192" font-size="11" text-anchor="middle" class="t-muted">USB 攝影機</text>
+
+          <rect x="360" y="276" width="240" height="70" rx="6" class="box-mcu"/>
+          <text x="480" y="304" font-size="16" font-weight="700" text-anchor="middle" class="t-mcu">Arduino Uno</text>
+          <text x="480" y="326" font-size="11" text-anchor="middle" class="t-mono">200 Hz 控制迴圈</text>
+
+          <!-- user <-> pi -->
+          <path d="M470,82 L470,140" class="ln-pi" marker-start="url(#b-pi)" marker-end="url(#b-pi)"/>
+          <text x="482" y="106" font-size="11" class="t-mono halo">Wi-Fi · WebRTC 影像 ↑ / WebSocket 指令 ↓</text>
+          <!-- cam -> pi -->
+          <path d="M272,177 L358,177" class="ln-hw" marker-end="url(#b-hw)"/>
+          <text x="315" y="168" font-size="11" text-anchor="middle" class="t-mono halo">USB · UVC</text>
+          <text x="315" y="196" font-size="10" text-anchor="middle" class="t-mono t-muted halo">640×480</text>
+          <!-- pi <-> uno -->
+          <path d="M470,214 L470,274" class="ln-mcu" marker-start="url(#b-mcu)" marker-end="url(#b-mcu)"/>
+          <text x="482" y="242" font-size="11" class="t-mono halo">UART 115200 · USB 線</text>
+          <text x="482" y="257" font-size="10" class="t-mono t-muted halo">指令 ↓ 50Hz 感測資料 ↑</text>
+
+          <!-- bottom row boxes: x = 20,170,320,470,620,770 ; w=130 -->
+          <g font-size="13" text-anchor="middle">
+            <rect x="20" y="440" width="130" height="56" rx="5" class="box-hw"/><text x="85" y="465" font-weight="700">MPU6050</text><text x="85" y="484" font-size="10" class="t-muted">陀螺儀 → 航向角</text>
+            <rect x="170" y="440" width="130" height="56" rx="5" class="box-hw"/><text x="235" y="465" font-weight="700">HC-SR04 前</text><text x="235" y="484" font-size="10" class="t-muted">到前牆距離</text>
+            <rect x="320" y="440" width="130" height="56" rx="5" class="box-hw"/><text x="385" y="465" font-weight="700">HC-SR04 右</text><text x="385" y="484" font-size="10" class="t-muted">到右牆距離</text>
+            <rect x="470" y="440" width="130" height="56" rx="5" class="box-hw"/><text x="535" y="465" font-weight="700">L298N</text><text x="535" y="484" font-size="10" class="t-muted">雙 H 橋馬達驅動</text>
+            <rect x="620" y="440" width="130" height="56" rx="5" class="box-hw"/><text x="685" y="465" font-weight="700">繼電器</text><text x="685" y="484" font-size="10" class="t-muted">吸塵風扇開關</text>
+            <rect x="770" y="440" width="130" height="56" rx="5" class="box-hw"/><text x="835" y="465" font-weight="700">蜂鳴器</text><text x="835" y="484" font-size="10" class="t-muted">辨識成功時反應</text>
+            <rect x="470" y="538" width="130" height="50" rx="5" class="box-hw"/><text x="535" y="568" font-weight="700">TT 馬達 ×2</text>
+            <rect x="620" y="538" width="130" height="50" rx="5" class="box-hw"/><text x="685" y="568" font-weight="700">風扇馬達</text>
+          </g>
+          <!-- uno -> bottom -->
+          <path d="M85,438 L85,400 L380,400 L380,348" class="ln-mcu" marker-end="url(#b-mcu)"/>
+          <path d="M235,438 L235,412 L420,412 L420,348" class="ln-mcu" marker-start="url(#b-mcu)" marker-end="url(#b-mcu)"/>
+          <path d="M385,438 L385,424 L450,424 L450,348" class="ln-mcu" marker-start="url(#b-mcu)" marker-end="url(#b-mcu)"/>
+          <path d="M510,348 L510,438" class="ln-mcu" marker-end="url(#b-mcu)"/>
+          <path d="M540,348 L540,388 L685,388 L685,438" class="ln-mcu" marker-end="url(#b-mcu)"/>
+          <path d="M570,348 L570,376 L835,376 L835,438" class="ln-mcu" marker-end="url(#b-mcu)"/>
+          <g font-size="10" class="t-mono">
+            <text x="90" y="432" class="halo">I²C 200Hz</text>
+            <text x="240" y="432" class="halo">Trig/Echo</text>
+            <text x="390" y="432" class="halo">Trig/Echo</text>
+            <text x="516" y="420" class="halo">PWM×2 + DIR×4</text>
+            <text x="690" y="432" class="halo">GPIO</text>
+            <text x="840" y="432" class="halo">GPIO</text>
+          </g>
+          <path d="M535,498 L535,536" class="ln-hw" marker-end="url(#b-hw)"/>
+          <path d="M685,498 L685,536" class="ln-hw" marker-end="url(#b-hw)"/>
+
+          <!-- legend -->
+          <g font-size="11" transform="translate(790,540)">
+            <line x1="0" y1="0" x2="26" y2="0" class="ln-pi"/><text x="34" y="4">Pi 相關連線</text>
+            <line x1="0" y1="20" x2="26" y2="20" class="ln-mcu"/><text x="34" y="24">Arduino 訊號</text>
+            <line x1="0" y1="40" x2="26" y2="40" class="ln-hw"/><text x="34" y="44">電力／影像</text>
+          </g>
+        </svg>
+        <figcaption>每條線都標出通訊方式。雙向箭頭代表雙向溝通（例如超音波：Arduino 送 Trig 觸發，收 Echo 回波）。</figcaption>
+      </figure>
+
+      <h3>為什麼要分兩顆腦</h3>
+      <div class="cols">
+        <div class="col"><h4 style="color:var(--pi)">Raspberry Pi 4</h4><ul><li>跑 Linux，可以處理影像、跑 ROS2、開 Wi-Fi 串流</li><li>缺點：Linux 不保證「準時」，偶爾會延遲幾十毫秒</li><li>GPIO 是 3.3V，直接接 5V 的 HC-SR04 會燒壞</li></ul></div>
+        <div class="col"><h4 style="color:var(--mcu)">Arduino Uno</h4><ul><li>沒有作業系統，迴圈每次都準時執行，適合積分陀螺儀、量測超音波回波時間</li><li>5V 邏輯，可以直接接 HC-SR04 和 L298N</li><li>缺點：記憶體只有 2KB，不能做影像處理</li></ul></div>
+      </div>
+      <div class="note"><span class="tag">分工好處</span><p>兩邊只靠「序列埠協定」溝通（第 05 節）。負責 Arduino 的組員<strong>完全不需要學 ROS2</strong>，只要照協定收發文字就好。</p></div>
+    </section>
+
+    <!-- 02 -->
+    <section id="power">
+      <div class="eyebrow">Power</div>
+      <h2><span class="num">02</span>電源架構</h2>
+      <p class="say">馬達啟動時電流很大，會讓電壓瞬間下降。如果 Pi 和馬達共用同一路電，Pi 可能會當機重開，所以電源要分成三路。</p>
+      <figure class="fig">
+        <svg viewBox="0 0 960 250" role="img" aria-labelledby="pw-t">
+          <title id="pw-t">電源架構：電池分三路供電給 Pi、馬達、風扇，全部共地</title>
+          <defs><marker id="p-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-hw"/></marker></defs>
+          <rect x="20" y="90" width="150" height="64" rx="6" class="box-hw"/>
+          <text x="95" y="117" font-size="15" font-weight="700" text-anchor="middle">鋰電池組</text>
+          <text x="95" y="138" font-size="11" text-anchor="middle" class="t-mono t-muted">電壓 ❓ 待確認</text>
+          <path d="M170,122 L220,122" class="ln-hw"/>
+          <path d="M220,40 L220,204" class="ln-hw"/>
+          <path d="M220,40 L290,40" class="ln-hw" marker-end="url(#p-ink)"/>
+          <path d="M220,122 L290,122" class="ln-hw" marker-end="url(#p-ink)"/>
+          <path d="M220,204 L290,204" class="ln-hw" marker-end="url(#p-ink)"/>
+          <g font-size="13" text-anchor="middle">
+            <rect x="292" y="14" width="160" height="52" rx="5" class="box-hw"/><text x="372" y="37" font-weight="700">降壓模組</text><text x="372" y="56" font-size="10" class="t-mono t-muted">→ 5V 3A</text>
+            <rect x="292" y="96" width="160" height="52" rx="5" class="box-hw"/><text x="372" y="127" font-weight="700">L298N</text>
+            <rect x="292" y="178" width="160" height="52" rx="5" class="box-hw"/><text x="372" y="209" font-weight="700">繼電器</text>
+            <rect x="512" y="14" width="150" height="52" rx="5" class="box-pi"/><text x="587" y="45" font-weight="700" class="t-pi">Pi 4（USB-C）</text>
+            <rect x="722" y="14" width="150" height="52" rx="5" class="box-mcu"/><text x="797" y="37" font-weight="700" class="t-mcu">Arduino Uno</text><text x="797" y="56" font-size="10" class="t-muted">由 Pi 的 USB 供電</text>
+            <rect x="512" y="96" width="150" height="52" rx="5" class="box-hw"/><text x="587" y="127" font-weight="700">TT 馬達 ×2</text>
+            <rect x="512" y="178" width="150" height="52" rx="5" class="box-hw"/><text x="587" y="209" font-weight="700">風扇馬達</text>
+            <rect x="722" y="96" width="150" height="52" rx="5" class="box-hw"/><text x="797" y="119" font-weight="700">感測器</text><text x="797" y="138" font-size="10" class="t-muted">由 Uno 的 5V 供電</text>
+          </g>
+          <path d="M452,40 L510,40" class="ln-hw" marker-end="url(#p-ink)"/>
+          <path d="M662,40 L720,40" class="ln-hw" marker-end="url(#p-ink)"/>
+          <path d="M452,122 L510,122" class="ln-hw" marker-end="url(#p-ink)"/>
+          <path d="M452,204 L510,204" class="ln-hw" marker-end="url(#p-ink)"/>
+          <path d="M797,66 L797,94" class="ln-hw" marker-end="url(#p-ink)"/>
+          <text x="690" y="200" font-size="11" class="t-mono t-muted">所有 GND 接在一起（共地）</text>
+          <text x="690" y="218" font-size="11" class="t-mono t-muted">馬達端加電容吸收電壓突波</text>
+        </svg>
+      </figure>
+      <div class="note todo"><span class="tag">待確認</span><p>課程提供的鋰電池規格（幾顆、幾伏特、容量）。8 分鐘比賽加上前後測試，Pi 4 約 3–5W、馬達和風扇另計，需要估算電池撐不撐得住。</p></div>
+    </section>
+
+    <!-- 03 -->
+    <section id="loc">
+      <div class="eyebrow">Localization without encoders</div>
+      <h2><span class="num">03</span>無編碼器定位：用牆壁當尺</h2>
+      <p class="say">一般機器人用輪子編碼器算「走了幾圈」。我們不能裝，所以改成直接量「離牆多遠」。</p>
+
+      <figure class="fig narrow">
+        <svg viewBox="0 0 480 300" role="img" aria-labelledby="loc-t">
+          <title id="loc-t">定位示意：車子朝東行駛，前方超音波量到東牆距離，右側超音波量到南牆距離</title>
+          <defs><marker id="l-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead"/></marker></defs>
+          <rect x="20" y="20" width="440" height="250" class="field"/>
+          <path d="M150,180 L452,140 L452,220 Z" class="beam"/>
+          <path d="M120,214 L95,262 L145,262 Z" class="beam"/>
+          <rect x="90" y="160" width="60" height="50" rx="8" class="robot"/>
+          <path d="M100,185 L132,185" stroke="var(--sheet)" stroke-width="2"/><path d="M132,179 L142,185 L132,191 Z" class="fill-sheet"/>
+          <path d="M150,110 L458,110" class="ln" marker-start="url(#l-ink)" marker-end="url(#l-ink)"/>
+          <text x="300" y="102" font-size="13" text-anchor="middle" class="halo">前方距離 d<tspan baseline-shift="sub" font-size="9">front</tspan> → 知道 x</text>
+          <path d="M175,212 L175,266" class="ln" marker-start="url(#l-ink)" marker-end="url(#l-ink)"/>
+          <text x="184" y="246" font-size="13" class="halo">右側距離 d<tspan baseline-shift="sub" font-size="9">right</tspan> → 知道 y</text>
+          <path d="M120,150 A40,40 0 0 1 160,150" class="ln-pi" />
+          <text x="120" y="140" font-size="13" text-anchor="middle" class="t-pi halo">陀螺儀 θ</text>
+          <text x="470" y="180" font-size="11" class="t-muted" transform="rotate(90 470 180)" text-anchor="middle">東牆</text>
+          <text x="240" y="288" font-size="11" class="t-muted" text-anchor="middle">南牆</text>
+        </svg>
+      </figure>
+
+      <div class="tbl"><table>
+        <thead><tr><th>要知道什麼</th><th>用什麼</th><th>怎麼做</th></tr></thead>
+        <tbody>
+          <tr><td>方向 θ</td><td>MPU6050 陀螺儀 z 軸</td><td>開機時靜止 2 秒，估計零點偏移；之後把角速度積分成角度。用來走直線、轉精準的 90°</td></tr>
+          <tr><td>前進到哪裡</td><td>前方 HC-SR04</td><td>只走平行牆壁的直線，用「離前牆多遠」當停止條件，例如「朝東走，直到前方 = 150cm」</td></tr>
+          <tr><td>離側牆多遠</td><td>右側 HC-SR04</td><td>沿牆走時維持固定距離</td></tr>
+          <tr><td>修正陀螺儀漂移</td><td>右側 HC-SR04</td><td>沿牆走時，如果側邊距離慢慢變大，代表車頭往外偏，可以反推角度誤差並拉回來</td></tr>
+        </tbody>
+      </table></div>
+
+      <div class="note"><span class="tag">名詞</span><p><strong>漂移（drift）</strong>：陀螺儀量的是「轉多快」，要一直累加才會得到「轉了幾度」。小誤差累加久了會越來越大，像是時鐘每天慢一點點，一個月後就差很多。校正好的 MPU6050 在 8 分鐘內大約會飄幾度。</p></div>
+
+      <h3>我們考慮過、但沒有採用的方法</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>方法</th><th>原理</th><th>為什麼不用</th></tr></thead>
+        <tbody>
+          <tr><td>VIO（視覺慣性里程計）</td><td>攝影機追蹤畫面中的特徵點，搭配 IMU 推算位移</td><td>場地是素面地板＋素面牆，特徵點太少；C310 是捲簾快門，暗處只有約 13 fps；Pi 4 算力不足</td></tr>
+          <tr><td>SLAM＋Nav2</td><td>邊建地圖邊定位，再用導航框架規劃路徑</td><td>需要光達或輪子里程計，我們都沒有；在這個簡單場地是殺雞用牛刀</td></tr>
+          <tr><td>只靠時間盲走</td><td>「全速走 3 秒 ≈ 60cm」</td><td>電池電壓一降、地板一滑就不準，沒有任何回饋</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 04 -->
+    <section id="route">
+      <div class="eyebrow">Route &amp; flow chart</div>
+      <h2><span class="num">04</span>路線與流程</h2>
+      <p class="say">路線是順時針繞場，讓牆壁大多在右手邊，右側超音波才量得到。每一段都只有一個停止條件。</p>
+
+      <figure class="fig narrow">
+        <svg viewBox="-70 -30 440 380" role="img" aria-labelledby="rt-t">
+          <title id="rt-t">期末自走預計路線，共九段</title>
+          <defs><marker id="r-ac" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-ac"/></marker></defs>
+          <rect x="0" y="0" width="300" height="300" class="field"/>
+          <rect x="-4" y="132" width="8" height="36" class="fill-sheet"/>
+          <rect x="240" y="0" width="60" height="60" class="zone"/>
+          <rect x="15" y="15" width="15" height="15" class="patch"/>
+          <rect x="15" y="270" width="15" height="15" class="patch"/>
+          <rect x="270" y="270" width="15" height="15" class="patch"/>
+          <rect x="270" y="15" width="15" height="15" class="patch-bad"/>
+          <rect x="142.5" y="142.5" width="15" height="15" class="patch-green"/>
+          <g class="route" marker-end="url(#r-ac)">
+            <path d="M-50,146 L18,146"/>
+            <path d="M22,150 L22,274"/>
+            <path d="M26,278 L274,278"/>
+            <path d="M278,274 L278,74"/>
+            <path d="M274,70 L46,70"/>
+            <path d="M42,66 L42,26"/>
+            <path d="M34,26 L34,150"/>
+            <path d="M38,154 L146,154"/>
+            <path d="M146,158 L-50,158"/>
+          </g>
+          <g font-size="10" font-weight="700" text-anchor="middle" class="t-mono">
+            <circle cx="-20" cy="134" r="8" class="route-dot"/><text x="-20" y="137.5" fill="var(--sheet)" style="fill:var(--sheet)">1</text>
+            <circle cx="10" cy="212" r="8" class="route-dot"/><text x="10" y="215.5" style="fill:var(--sheet)">2</text>
+            <circle cx="150" cy="290" r="8" class="route-dot"/><text x="150" y="293.5" style="fill:var(--sheet)">3</text>
+            <circle cx="290" cy="170" r="8" class="route-dot"/><text x="290" y="173.5" style="fill:var(--sheet)">4</text>
+            <circle cx="160" cy="58" r="8" class="route-dot"/><text x="160" y="61.5" style="fill:var(--sheet)">5</text>
+            <circle cx="56" cy="40" r="8" class="route-dot"/><text x="56" y="43.5" style="fill:var(--sheet)">6</text>
+            <circle cx="46" cy="110" r="8" class="route-dot"/><text x="46" y="113.5" style="fill:var(--sheet)">7</text>
+            <circle cx="96" cy="142" r="8" class="route-dot"/><text x="96" y="145.5" style="fill:var(--sheet)">8</text>
+            <circle cx="96" cy="170" r="8" class="route-dot"/><text x="96" y="173.5" style="fill:var(--sheet)">9</text>
+          </g>
+          <text x="150" y="325" font-size="9" text-anchor="middle" class="t-muted">為了看得清楚，重疊的路段稍微錯開畫；實際上會走在同一條線上</text>
+        </svg>
+      </figure>
+
+      <div class="tbl"><table>
+        <thead><tr><th>#</th><th>動作</th><th>停止條件（前方超音波）</th><th>經過</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td>從入口朝東前進</td><td class="num">前方 = 278cm（x ≈ 22）</td><td></td></tr>
+          <tr><td class="num">2</td><td>右轉朝南</td><td class="num">前方 = 22cm</td><td>BL 紙片區</td></tr>
+          <tr><td class="num">3</td><td>左轉朝東</td><td class="num">前方 = 22cm</td><td>BR 紙片區</td></tr>
+          <tr><td class="num">4</td><td>左轉朝北</td><td class="num">前方 ≈ 70cm</td><td>停在右上扣分區下方</td></tr>
+          <tr><td class="num">5</td><td>左轉朝西</td><td class="num">前方 = 22cm</td><td></td></tr>
+          <tr><td class="num">6</td><td>右轉朝北</td><td class="num">前方 = 22cm</td><td>TL 紙片區</td></tr>
+          <tr><td class="num">7</td><td>掉頭朝南</td><td class="num">前方 = 150cm</td><td></td></tr>
+          <tr><td class="num">8</td><td>左轉朝東</td><td class="num">前方 = 150cm</td><td>中央綠色紙片</td></tr>
+          <tr><td class="num">9</td><td>掉頭朝西，出場</td><td class="num">前方 ≈ 10cm</td><td>出口</td></tr>
+        </tbody>
+      </table></div>
+      <p>總長約 12m。TT 馬達如果跑 20–25 cm/s，再加上轉彎時間，大約 1.5–2 分鐘，有機會拿到 2:30 以內的滿分。實際數值要扣掉感測器到車體中心的距離，等車體確定後再調整。</p>
+
+      <h3>每一段的行為（期末）</h3>
+      <div class="chips">
+        <span class="chip ac">原地轉到目標方向</span><span class="arrow">→</span>
+        <span class="chip ac">直走，用陀螺儀維持方向</span><span class="arrow">→</span>
+        <span class="chip ac">前方距離到了？</span><span class="arrow">→</span>
+        <span class="chip ac">停車，換下一段</span>
+      </div>
+      <div class="chips">
+        <span class="lab">隨時檢查</span>
+        <span class="chip pi">攝影機看到紅色圓形</span><span class="arrow">→</span>
+        <span class="chip pi">開進辨識區（車身至少 1/3）</span><span class="arrow">→</span>
+        <span class="chip pi">蜂鳴器＋畫面警告</span><span class="arrow">→</span>
+        <span class="chip pi">回到原本路線</span>
+      </div>
+      <div class="chips">
+        <span class="lab">右上角</span>
+        <span class="chip">進入扣分區之前</span><span class="arrow">→</span>
+        <span class="chip">關掉吸塵風扇</span><span class="arrow">→</span>
+        <span class="chip">離開後再打開</span>
+      </div>
+
+      <h3>遠端遙控流程（期中）</h3>
+      <div class="chips">
+        <span class="lab">指令</span>
+        <span class="chip">網頁按鍵／搖桿</span><span class="arrow">→ WebSocket →</span>
+        <span class="chip pi">web_teleop</span><span class="arrow">→ /cmd_vel →</span>
+        <span class="chip pi">arduino_bridge</span><span class="arrow">→ UART →</span>
+        <span class="chip mcu">Uno</span><span class="arrow">→ PWM →</span>
+        <span class="chip hw">馬達</span>
+      </div>
+      <div class="chips">
+        <span class="lab">畫面</span>
+        <span class="chip hw">C310</span><span class="arrow">→</span>
+        <span class="chip pi">硬體 H.264 編碼</span><span class="arrow">→</span>
+        <span class="chip pi">MediaMTX</span><span class="arrow">→ WebRTC →</span>
+        <span class="chip">網頁</span>
+      </div>
+    </section>
+
+    <!-- 05 -->
+    <section id="fw">
+      <div class="eyebrow">Firmware</div>
+      <h2><span class="num">05</span>Arduino 韌體與序列埠協定</h2>
+      <p class="say">這是 Pi 和 Arduino 之間的「合約」。只要雙方都照這個格式收發，兩邊就可以分開開發、分開測試。</p>
+
+      <div class="cols">
+        <div class="col">
+          <h4>Pi → Uno（指令）</h4>
+<pre style="margin:0"><span class="k">V</span> &lt;線速度&gt; &lt;角速度&gt;   <span class="c"># 移動，-255~255</span>
+<span class="k">S</span>                      <span class="c"># 停車</span>
+<span class="k">F</span> &lt;0|1&gt;                <span class="c"># 吸塵風扇</span>
+<span class="k">B</span> &lt;0|1&gt;                <span class="c"># 蜂鳴器</span>
+<span class="k">Z</span>                      <span class="c"># 航向角歸零</span></pre>
+        </div>
+        <div class="col">
+          <h4>Uno → Pi（每秒 50 次）</h4>
+<pre style="margin:0"><span class="k">D</span> &lt;yaw°&gt; &lt;前cm&gt; &lt;右cm&gt;
+<span class="c"># 例：D 90.4 148.2 23.0</span>
+<span class="k">L</span> &lt;文字&gt;
+<span class="c"># debug 訊息</span></pre>
+        </div>
+      </div>
+
+      <h3>Uno 迴圈要做的事</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>工作</th><th class="num">頻率</th><th>說明</th></tr></thead>
+        <tbody>
+          <tr><td>讀 MPU6050、積分 yaw</td><td class="num">200 Hz</td><td>頻率越穩，積分越準</td></tr>
+          <tr><td>觸發超音波</td><td class="num">各約 15 Hz</td><td>兩顆<strong>輪流</strong>觸發，避免收到對方的回波</td></tr>
+          <tr><td>航向 PID</td><td class="num">200 Hz</td><td>在 Uno 上做，反應最快；Pi 只給目標</td></tr>
+          <tr><td>回報資料給 Pi</td><td class="num">50 Hz</td><td><code>D</code> 開頭那行</td></tr>
+          <tr><td>安全停車</td><td class="num">—</td><td>300ms 沒收到 Pi 的指令就自動停車（斷線保護）</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>接腳（暫定）</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>元件</th><th>Uno 腳位</th></tr></thead>
+        <tbody>
+          <tr><td>MPU6050 SDA / SCL</td><td class="mono">A4 / A5</td></tr>
+          <tr><td>HC-SR04 前 Trig / Echo</td><td class="mono">D2 / D3</td></tr>
+          <tr><td>HC-SR04 右 Trig / Echo</td><td class="mono">D4 / D7</td></tr>
+          <tr><td>L298N ENA / ENB（PWM）</td><td class="mono">D5 / D6</td></tr>
+          <tr><td>L298N IN1–IN4</td><td class="mono">D8 / D9 / D10 / D11</td></tr>
+          <tr><td>蜂鳴器</td><td class="mono">D12</td></tr>
+          <tr><td>繼電器（風扇）</td><td class="mono">D13</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note"><span class="tag">注意</span><p>Uno 只有一組硬體序列埠，而且已經接給 Pi 使用，所以 <code>Serial.print</code> 的 debug 訊息一定要用 <code>L</code> 開頭，Pi 才分得出哪些是資料、哪些是訊息。</p></div>
+    </section>
+
+    <!-- 06 -->
+    <section id="stream">
+      <div class="eyebrow">Video streaming · done</div>
+      <h2><span class="num">06</span>影像串流（已完成）</h2>
+      <p class="say">期中要「看著串流遙控」，比賽現場網路可能很差，所以串流的目標是低延遲、低頻寬、斷線能自己恢復。</p>
+      <div class="stats">
+        <div class="stat"><b>~1 Mbps</b><span>頻寬，約為 MJPEG 的 1/5～1/10</span></div>
+        <div class="stat"><b>15–20%</b><span>Pi 4 CPU（硬體 H.264 編碼）</span></div>
+        <div class="stat"><b>0.5 s</b><span>關鍵幀間隔，掉封包後的恢復時間</span></div>
+        <div class="stat"><b>3 s</b><span>畫面停止多久後，看門狗自動重啟攝影機</span></div>
+      </div>
+      <div class="tbl"><table>
+        <thead><tr><th>設計</th><th>原因</th></tr></thead>
+        <tbody>
+          <tr><td>WebRTC（UDP）</td><td>掉封包時直接跳過，延遲不會越積越多；UDP 被擋時自動改走 TCP</td></tr>
+          <tr><td>不依賴網際網路</td><td>現場沒有外網也能用；我們會自帶路由器，讓筆電和 Pi 直接連線</td></tr>
+          <tr><td>同學原本的 <code>cv2.imshow</code> 方案</td><td>只會顯示在 Pi 自己的螢幕上；改用 SSH 轉發要傳未壓縮畫面（約 70 Mbps），所以不採用</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <div class="part-head" id="part-ros">PART B<b>軟體架構：ROS2</b></div>
+
+    <!-- 07 -->
+    <section id="ros-what">
+      <div class="eyebrow">ROS2 in five minutes</div>
+      <h2><span class="num">07</span>ROS2 是什麼</h2>
+      <p class="say">ROS2（Robot Operating System 2）不是作業系統，而是一套讓「很多支小程式互相傳訊息」的框架，幾乎所有研究用機器人都在用。</p>
+      <p>可以把它想成一間公司：</p>
+      <div class="tbl"><table>
+        <thead><tr><th>ROS2 名詞</th><th>比喻</th><th>在我們的車上</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Node</strong>（節點）</td><td>一位員工，只負責一件事</td><td><code>vision</code> 只負責找紅色圓形</td></tr>
+          <tr><td><strong>Topic</strong>（主題）</td><td>一個公告頻道，有名字</td><td><code>/range/front</code> 頻道專門放前方距離</td></tr>
+          <tr><td><strong>Message</strong>（訊息）</td><td>固定格式的表單</td><td><code>sensor_msgs/Range</code>：距離、量測範圍、時間戳記</td></tr>
+          <tr><td><strong>Publish</strong>（發布）</td><td>往頻道貼公告</td><td><code>arduino_bridge</code> 每秒貼 50 次距離</td></tr>
+          <tr><td><strong>Subscribe</strong>（訂閱）</td><td>訂閱頻道，有新公告就通知我</td><td><code>localizer</code> 訂閱距離來算位置</td></tr>
+        </tbody>
+      </table></div>
+      <p>重點是：<strong>發布的人不需要知道誰在聽，訂閱的人也不需要知道誰在發。</strong>大家只要約定好頻道名稱和表單格式。</p>
+
+      <h3>實際的程式長怎樣</h3>
+      <p>發布端（<code>arduino_bridge</code> 的一部分）：</p>
+<pre><span class="k">from</span> sensor_msgs.msg <span class="k">import</span> Range
+
+<span class="k">class</span> Bridge(Node):
+    <span class="k">def</span> __init__(self):
+        super().__init__(<span class="s">'arduino_bridge'</span>)
+        self.pub = self.create_publisher(Range, <span class="s">'/range/front'</span>, 10)
+
+    <span class="k">def</span> on_serial_line(self, front_cm):      <span class="c"># 每收到一行 "D ..." 就呼叫</span>
+        msg = Range()
+        msg.range = front_cm / 100.0            <span class="c"># ROS 一律用公尺</span>
+        self.pub.publish(msg)</pre>
+      <p>訂閱端（<code>mission</code> 的一部分）：</p>
+<pre>self.create_subscription(Range, <span class="s">'/range/front'</span>, self.on_front, 10)
+
+<span class="k">def</span> on_front(self, msg):
+    <span class="k">if</span> msg.range &lt;= self.target:           <span class="c"># 到達這一段的停止條件</span>
+        self.next_leg()</pre>
+
+      <h3>好用的指令</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>指令</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td><code>ros2 topic list</code></td><td>列出現在有哪些頻道</td></tr>
+          <tr><td><code>ros2 topic echo /range/front</code></td><td>即時看前方距離（不用寫任何程式）</td></tr>
+          <tr><td><code>ros2 topic pub /cmd_vel ...</code></td><td>手動送一個移動指令，測試馬達</td></tr>
+          <tr><td><code>rqt_graph</code></td><td>畫出所有 node 和 topic 的連線圖</td></tr>
+          <tr><td><code>ros2 bag record -a</code></td><td>把所有頻道的資料錄下來，回家可以重播、調參數</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 08 -->
+    <section id="ros-why">
+      <div class="eyebrow">Why ROS2</div>
+      <h2><span class="num">08</span>為什麼用 ROS2？不用會怎樣？</h2>
+      <p class="say">不用 ROS2 也做得出來，但所有功能會擠在同一支大程式裡。專案越長越大，就越難分工和除錯。</p>
+
+      <div class="cols">
+        <div class="col bad">
+          <h4>不用 ROS2：一支大程式</h4>
+          <ul>
+            <li>讀序列埠、影像辨識、決策、網頁遙控全寫在一起，要自己處理多執行緒</li>
+            <li>影像辨識當掉，整台車跟著停</li>
+            <li>四個人改同一個檔案，Git 一直衝突</li>
+            <li>想看「現在前方距離是多少」，要自己加 print</li>
+            <li>練習時出錯，只能重跑一次，祈禱問題再出現</li>
+            <li>期中遙控和期末自走大概要寫成兩支程式</li>
+          </ul>
+        </div>
+        <div class="col goodc">
+          <h4>用 ROS2：很多個小 node</h4>
+          <ul>
+            <li>每個 node 只做一件事，每個人負責自己的 node</li>
+            <li>每個 node 是獨立的程式，一個當掉不影響其他</li>
+            <li>每個 node 可以單獨測試：用 <code>ros2 topic pub</code> 假裝別人送資料進來</li>
+            <li><code>ros2 topic echo</code>、<code>rqt_graph</code> 直接看資料流</li>
+            <li><code>ros2 bag</code> 錄下練習時的感測資料，回家重播、調參數</li>
+            <li>期中換期末，只要把 <code>web_teleop</code> 換成 <code>mission</code>，其他不用動</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>ROS2 的代價，以及我們怎麼降低</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>代價</th><th>對策</th></tr></thead>
+        <tbody>
+          <tr><td>要學新東西，組員大多不熟</td><td>只有 Pi 端用 ROS2；Arduino 端完全不需要。每個 node 都很小，照範本改就好</td></tr>
+          <tr><td>安裝和設定比較麻煩</td><td>由熟的人在 Pi 上裝好，大家用同一套環境</td></tr>
+          <tr><td>多佔一些 Pi 的資源</td><td>Node 數量控制在 6 個左右；影像串流不走 ROS2，直接用 MediaMTX</td></tr>
+          <tr><td>Nav2、SLAM 等現成套件用不上</td><td>我們只用 ROS2 的「溝通框架」和「工具」，不依賴這些大型套件</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 09 -->
+    <section id="ros-graph">
+      <div class="eyebrow">Node graph</div>
+      <h2><span class="num">09</span>Node 與 Topic</h2>
+      <p class="say">期中和期末是同一套架構，差別只在「誰來下 /cmd_vel 指令」：期中是人（web_teleop），期末是程式（mission）。</p>
+
+      <div class="seg" role="group" aria-label="切換期中／期末">
+        <button type="button" id="ph-mid" aria-pressed="false">期中：遠端遙控</button>
+        <button type="button" id="ph-fin" aria-pressed="true">期末：自走</button>
+      </div>
+
+      <figure class="fig">
+        <svg id="rosgraph" viewBox="0 0 960 470" role="img" aria-labelledby="rg-t">
+          <title id="rg-t">ROS2 node 圖：camera、vision、web_teleop、mission、localizer、arduino_bridge 之間的 topic</title>
+          <defs>
+            <marker id="g-pi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-pi"/></marker>
+            <marker id="g-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrowhead-ext"/></marker>
+          </defs>
+
+          <!-- edges -->
+          <path d="M383,62 L222,62" class="ln-ext" marker-end="url(#g-ext)"/>
+          <text x="302" y="52" font-size="11" text-anchor="middle" class="t-mono t-muted halo">H.264 / RTP（非 ROS）</text>
+
+          <g class="fin">
+            <path d="M577,62 L738,62" class="ln-pi" marker-end="url(#g-pi)"/>
+            <text x="657" y="52" font-size="11" text-anchor="middle" class="t-mono halo">/image_raw</text>
+            <path d="M800,96 L560,198" class="ln-pi" marker-end="url(#g-pi)"/>
+            <text x="700" y="142" font-size="11" text-anchor="middle" class="t-mono halo">/target_found</text>
+            <path d="M738,232 L577,232" class="ln-pi" marker-end="url(#g-pi)"/>
+            <text x="657" y="224" font-size="11" text-anchor="middle" class="t-mono halo">/pose</text>
+            <path d="M480,266 L480,368" class="ln-pi" marker-end="url(#g-pi)"/>
+            <text x="490" y="300" font-size="11" class="t-mono halo">/cmd_vel</text>
+            <text x="490" y="316" font-size="11" class="t-mono halo">/vacuum</text>
+            <text x="490" y="332" font-size="11" class="t-mono halo">/buzzer</text>
+            <path d="M560,370 L800,268" class="ln-pi" marker-end="url(#g-pi)"/>
+            <text x="712" y="330" font-size="11" text-anchor="middle" class="t-mono halo">/imu/yaw · /range/*</text>
+          </g>
+
+          <path d="M180,266 L392,368" class="ln-pi" marker-end="url(#g-pi)"/>
+          <text x="262" y="330" font-size="11" text-anchor="middle" class="t-mono halo">/cmd_vel</text>
+          <text x="262" y="346" font-size="10" text-anchor="middle" class="t-mono t-muted halo midonly">遙控指令</text>
+
+          <path d="M127,368 L127,268" class="ln-ext" marker-end="url(#g-ext)"/>
+          <text x="137" y="322" font-size="11" class="t-mono t-muted halo">WebSocket</text>
+
+          <path d="M577,402 L738,402" class="ln-ext" marker-start="url(#g-ext)" marker-end="url(#g-ext)"/>
+          <text x="657" y="394" font-size="11" text-anchor="middle" class="t-mono t-muted halo">UART 115200</text>
+
+          <!-- nodes -->
+          <g font-size="15" text-anchor="middle">
+            <rect x="30" y="30" width="190" height="64" rx="6" class="box-ext"/>
+            <text x="125" y="58" font-weight="700">MediaMTX</text><text x="125" y="78" font-size="11" class="t-muted">→ 瀏覽器（WebRTC）</text>
+
+            <rect x="385" y="30" width="190" height="64" rx="32" class="box-pi"/>
+            <text x="480" y="58" class="t-mono t-pi" font-weight="600">camera</text><text x="480" y="78" font-size="11" class="t-muted">讀 C310、分送畫面</text>
+
+            <g class="fin">
+              <rect x="740" y="30" width="190" height="64" rx="32" class="box-pi"/>
+              <text x="835" y="58" class="t-mono t-pi" font-weight="600">vision</text><text x="835" y="78" font-size="11" class="t-muted">找紅色圓形</text>
+            </g>
+
+            <rect x="30" y="200" width="190" height="64" rx="32" class="box-pi"/>
+            <text x="125" y="228" class="t-mono t-pi" font-weight="600">web_teleop</text><text x="125" y="248" font-size="11" class="t-muted">網頁遙控、緊急停止</text>
+
+            <g class="fin">
+              <rect x="385" y="200" width="190" height="64" rx="32" class="box-pi"/>
+              <text x="480" y="228" class="t-mono t-pi" font-weight="600">mission</text><text x="480" y="248" font-size="11" class="t-muted">任務狀態機</text>
+              <rect x="740" y="200" width="190" height="64" rx="32" class="box-pi"/>
+              <text x="835" y="228" class="t-mono t-pi" font-weight="600">localizer</text><text x="835" y="248" font-size="11" class="t-muted">算出 x, y, θ</text>
+            </g>
+
+            <rect x="30" y="370" width="190" height="64" rx="6" class="box-ext"/>
+            <text x="125" y="398" font-weight="700">瀏覽器</text><text x="125" y="418" font-size="11" class="t-muted">按鍵／搖桿</text>
+
+            <rect x="385" y="370" width="190" height="64" rx="32" class="box-pi"/>
+            <text x="480" y="398" class="t-mono t-pi" font-weight="600">arduino_bridge</text><text x="480" y="418" font-size="11" class="t-muted">ROS ⇄ 序列埠翻譯</text>
+
+            <rect x="740" y="370" width="190" height="64" rx="6" class="box-mcu"/>
+            <text x="835" y="398" font-weight="700" class="t-mcu">Arduino Uno</text><text x="835" y="418" font-size="11" class="t-muted">馬達、IMU、超音波</text>
+          </g>
+
+          <g font-size="11" transform="translate(30,456)">
+            <rect x="0" y="-9" width="26" height="12" rx="6" class="box-pi"/><text x="34" y="1">ROS2 node</text>
+            <rect x="120" y="-9" width="26" height="12" rx="2" class="box-ext"/><text x="154" y="1">ROS2 以外的程式／裝置</text>
+            <line x1="330" y1="-3" x2="356" y2="-3" class="ln-pi"/><text x="364" y="1">ROS2 topic</text>
+          </g>
+        </svg>
+        <figcaption id="rg-cap">期末：六個 node 全部啟動，web_teleop 保留作為緊急停止。</figcaption>
+      </figure>
+
+      <h3>每個 node 的工作</h3>
+      <div class="nodes">
+        <div class="node"><span class="badge mid">期中 · 期末</span><h4>arduino_bridge</h4><p class="what">ROS2 和 Arduino 之間的翻譯。把 <code>/cmd_vel</code> 轉成序列埠指令，把 Arduino 回報的資料拆成各個 topic。</p>
+          <dl><dt>訂閱</dt><dd>/cmd_vel /vacuum /buzzer</dd><dt>發布</dt><dd>/imu/yaw /range/front /range/right</dd></dl></div>
+        <div class="node"><span class="badge mid">期中 · 期末</span><h4>web_teleop</h4><p class="what">提供遙控網頁：按鍵或搖桿轉成移動指令。期末保留，作為緊急停止和除錯用。</p>
+          <dl><dt>訂閱</dt><dd>（網頁 WebSocket）</dd><dt>發布</dt><dd>/cmd_vel</dd></dl></div>
+        <div class="node"><span class="badge mid">期中 · 期末</span><h4>camera</h4><p class="what">攝影機同時只能被一支程式打開，所以由它統一讀畫面：一份送 MediaMTX 串流，一份發給 vision。</p>
+          <dl><dt>訂閱</dt><dd>—</dd><dt>發布</dt><dd>/image_raw</dd></dl></div>
+        <div class="node"><span class="badge fin">期末</span><h4>localizer</h4><p class="what">把陀螺儀角度和兩顆超音波的距離合起來，算出車子在場地上的位置。</p>
+          <dl><dt>訂閱</dt><dd>/imu/yaw /range/front /range/right</dd><dt>發布</dt><dd>/pose</dd></dl></div>
+        <div class="node"><span class="badge fin">期末</span><h4>mission</h4><p class="what">任務狀態機：照第 04 節的九段路線依序執行，負責吸塵開關和辨識反應。</p>
+          <dl><dt>訂閱</dt><dd>/pose /range/front /target_found</dd><dt>發布</dt><dd>/cmd_vel /vacuum /buzzer</dd></dl></div>
+        <div class="node"><span class="badge fin">期末</span><h4>vision</h4><p class="what">用 OpenCV 找紅色圓形（顏色篩選＋圓形偵測）。找到就通知 mission。</p>
+          <dl><dt>訂閱</dt><dd>/image_raw</dd><dt>發布</dt><dd>/target_found</dd></dl></div>
+      </div>
+
+      <h3>Topic 一覽</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Topic</th><th>訊息型別</th><th>內容</th><th class="num">頻率</th></tr></thead>
+        <tbody>
+          <tr><td><code>/cmd_vel</code></td><td><code>geometry_msgs/Twist</code></td><td><code>linear.x</code> 前進速度、<code>angular.z</code> 旋轉速度</td><td class="num">10–20 Hz</td></tr>
+          <tr><td><code>/imu/yaw</code></td><td><code>std_msgs/Float32</code></td><td>車頭角度（度）</td><td class="num">50 Hz</td></tr>
+          <tr><td><code>/range/front</code></td><td><code>sensor_msgs/Range</code></td><td>到前牆的距離（公尺）</td><td class="num">15 Hz</td></tr>
+          <tr><td><code>/range/right</code></td><td><code>sensor_msgs/Range</code></td><td>到右牆的距離（公尺）</td><td class="num">15 Hz</td></tr>
+          <tr><td><code>/pose</code></td><td><code>geometry_msgs/Pose2D</code></td><td>x、y、θ</td><td class="num">20 Hz</td></tr>
+          <tr><td><code>/image_raw</code></td><td><code>sensor_msgs/Image</code></td><td>攝影機畫面</td><td class="num">~15 Hz</td></tr>
+          <tr><td><code>/target_found</code></td><td><code>std_msgs/Bool</code></td><td>有沒有看到紅色圓形</td><td class="num">~15 Hz</td></tr>
+          <tr><td><code>/vacuum</code></td><td><code>std_msgs/Bool</code></td><td>吸塵風扇開或關</td><td class="num">有變化時</td></tr>
+          <tr><td><code>/buzzer</code></td><td><code>std_msgs/Bool</code></td><td>蜂鳴器開或關</td><td class="num">有變化時</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <div class="part-head" id="part-pm">PART C<b>專案管理</b></div>
+
+    <!-- 10 -->
+    <section id="mech">
+      <div class="eyebrow">Interface to mechanical design</div>
+      <h2><span class="num">10</span>電控對機構組的需求</h2>
+      <p class="say">機構由其他組員發想。下面是電控這邊需要機構配合的地方，設計車體時請一起考慮。</p>
+      <div class="tbl"><table>
+        <thead><tr><th>項目</th><th>需求</th><th>原因</th></tr></thead>
+        <tbody>
+          <tr><td>前方超音波</td><td>車頭正中央、朝正前方、離地約 5–15cm，前面不能有東西擋住</td><td>牆高 30–40cm；超音波的波束約 30°，太低會打到地板</td></tr>
+          <tr><td>右側超音波</td><td>車身右側中間、垂直朝右</td><td>沿牆時要量到側牆的距離</td></tr>
+          <tr><td>MPU6050</td><td>靠近兩輪中間（旋轉中心）、水平、鎖緊不能晃</td><td>晃動和風扇的震動會變成雜訊</td></tr>
+          <tr><td>攝影機</td><td>車頭偏高處、略微朝下，角度可以調整</td><td>要看到前方地面，也要看到角落離地的紅色圓形標的</td></tr>
+          <tr><td>電子元件空間</td><td>Pi 4、Uno、L298N、降壓模組、電池、繼電器</td><td>上層放 Pi 和 Uno，方便插拔線</td></tr>
+          <tr><td>車體尺寸</td><td>建議 ≤ 20cm</td><td>紙片區離牆只有 15cm，車太大轉角會撞牆</td></tr>
+          <tr><td>吸塵風扇</td><td>和 IMU 之間盡量做隔震</td><td>同上，減少陀螺儀雜訊</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 11 -->
+    <section id="plan">
+      <div class="eyebrow">Schedule &amp; teamwork</div>
+      <h2><span class="num">11</span>時程與分工</h2>
+      <p class="say">原則：11/06 前先完成一台可以遙控的車。期末的自走功能，在同一台車、同一套架構上往上加。</p>
+
+      <div class="gantt"><div class="g" id="gantt"></div></div>
+      <div class="legend"><span><i style="background:var(--pi)"></i>軟體（Pi／ROS2）</span><span><i style="background:var(--mcu)"></i>韌體／電路</span><span><i style="background:var(--hw)"></i>機構</span><span><i style="background:var(--ink)"></i>整合測試</span><span><i style="background:var(--accent);transform:rotate(45deg) scale(.8)"></i>里程碑</span></div>
+
+      <h3>分工</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>角色</th><th>負責</th><th>需要會什麼</th><th>成員</th></tr></thead>
+        <tbody>
+          <tr><td>軟體</td><td>Pi 端所有 node、串流、影像辨識、系統整合</td><td>Python、ROS2、Linux</td><td>待填</td></tr>
+          <tr><td>韌體／電路</td><td>Arduino 程式、接線、電源</td><td>Arduino C++，不需要 ROS2</td><td>待填</td></tr>
+          <tr><td>機構</td><td>車體、風扇、吸口、刷子、3D 列印與雷射切割</td><td>CAD</td><td>待填</td></tr>
+          <tr><td>專案管理</td><td>時程追蹤、會議紀錄、報告整合</td><td>—</td><td>待填</td></tr>
+        </tbody>
+      </table></div>
+      <p>程式碼放在 GitHub，每個人開自己的分支，不熟 Git 的組員可以用 repo 裡的 <code>docs/github_tutorial/git_helper.sh</code>。</p>
+    </section>
+
+    <!-- 12 -->
+    <section id="risk">
+      <div class="eyebrow">Difficulties</div>
+      <h2><span class="num">12</span>可能遇到的困難與對策</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>困難</th><th>影響</th><th>對策</th></tr></thead>
+        <tbody>
+          <tr><td>沒有編碼器，不知道走了多遠</td><td>自走時定位不準</td><td>用超音波量牆距；只走平行牆壁的直線</td></tr>
+          <tr><td>陀螺儀漂移</td><td>方向慢慢偏掉</td><td>開機時校正零點；沿牆走時用側邊距離修正</td></tr>
+          <tr><td>超音波斜射時量不到、兩顆互相干擾</td><td>距離讀值亂跳</td><td>盡量垂直對牆；兩顆輪流觸發；用中位數濾波</td></tr>
+          <tr><td>比賽現場網路差</td><td>串流延遲、畫面卡住</td><td>硬體 H.264＋WebRTC；自帶路由器</td></tr>
+          <tr><td>馬達啟動時電壓下降</td><td>Pi 當機重開</td><td>電源分三路、加電容、共地</td></tr>
+          <tr><td>吸力不足、紙片卡在吸口</td><td>吸不到 30 張</td><td>提早做吸力測試，調整吸口高度</td></tr>
+          <tr><td>攝影機只能被一支程式打開</td><td>串流和辨識搶攝影機</td><td>由 camera node 統一讀取再分送</td></tr>
+          <tr><td>組員大多不熟 ROS2</td><td>軟體進度卡住</td><td>Arduino 端不需要 ROS2；每個 node 都很小，可以照範本改</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- 13 -->
+    <section id="qs">
+      <div class="eyebrow">Open questions</div>
+      <h2><span class="num">13</span>待討論問題</h2>
+      <ol class="qs">
+        <li><span>每個人想負責哪一塊？<span class="who">全體</span></span></li>
+        <li><span>課程提供的鋰電池規格是什麼？要不要另外買降壓模組和蜂鳴器？<span class="who">韌體／電路</span></span></li>
+        <li><span>車體尺寸和形狀什麼時候可以定？超音波和攝影機要裝在哪裡？<span class="who">機構</span></span></li>
+        <li><span>吸塵風扇用什麼馬達？繼電器開關夠不夠，還是需要調速？<span class="who">機構 × 電路</span></span></li>
+        <li><span>第一次報告的時間有多長？這份內容要挑哪些頁面？<span class="who">全體</span></span></li>
+        <li><span>對 ROS2 架構或序列埠協定有沒有疑問？<span class="who">全體</span></span></li>
+      </ol>
+    </section>
+
+    <footer>repo：docs/proposal/overview.html · 對應文件：docs/architecture.md、firmware/README.md、stream/README.md</footer>
+  </main>
+</div>
+
+<script>
+(function () {
+  // ---- phase toggle for the ROS graph
+  var g = document.getElementById('rosgraph');
+  var cap = document.getElementById('rg-cap');
+  var bMid = document.getElementById('ph-mid');
+  var bFin = document.getElementById('ph-fin');
+  function setPhase(mid) {
+    g.classList.toggle('mid', mid);
+    bMid.setAttribute('aria-pressed', String(mid));
+    bFin.setAttribute('aria-pressed', String(!mid));
+    cap.textContent = mid
+      ? '期中：只需要 camera、web_teleop、arduino_bridge 三個 node。淡掉的部分是期末才會加上的。'
+      : '期末：六個 node 全部啟動，web_teleop 保留作為緊急停止。';
+  }
+  bMid.addEventListener('click', function () { setPhase(true); });
+  bFin.addEventListener('click', function () { setPhase(false); });
+
+  // ---- gantt (12 weeks starting Mon 2026-10-05)
+  var start = new Date(2026, 9, 5), weeks = 12, total = weeks * 7;
+  function day(m, d) { return Math.round((new Date(2026, m - 1, d) - start) / 864e5); }
+  function pct(n) { return (n / total * 100).toFixed(3) + '%'; }
+  var rows = [
+    ['grp', '準備'],
+    ['sw', 'ROS2 環境、repo', [10,5], [10,12]],
+    ['sw', '影像串流', [10,1], [10,6]],
+    ['grp', '期中：遙控'],
+    ['fw', '馬達＋L298N 控制', [10,13], [10,24]],
+    ['fw', 'IMU、超音波讀取', [10,20], [10,31]],
+    ['fw', '序列埠協定', [10,27], [11,2]],
+    ['sw', 'arduino_bridge', [10,20], [11,2]],
+    ['sw', 'web_teleop 遙控網頁', [10,27], [11,5]],
+    ['me', '車體 v1、吸塵器', [10,12], [10,30]],
+    ['it', '整合、遙控練習', [11,2], [11,12]],
+    ['grp', '期末：自走'],
+    ['fw', '航向 PID', [11,9], [11,20]],
+    ['sw', 'localizer', [11,10], [11,21]],
+    ['sw', 'mission 狀態機', [11,14], [11,27]],
+    ['sw', 'vision 圓形辨識', [11,14], [11,27]],
+    ['me', '感測器支架、改版', [11,14], [11,26]],
+    ['it', '場地測試、調參數', [11,24], [12,10]],
+    ['grp', '收尾'],
+    ['it', '口頭報告、書面報告', [12,12], [12,27]]
+  ];
+  var ms = [['報告1', 10,16], ['報告2', 10,30], ['期中', 11,13], ['期末', 12,11], ['口頭', 12,18]];
+  var el = document.getElementById('gantt');
+  var h = '<div class="hd"></div><div class="hd">';
+  for (var w = 0; w < weeks; w++) {
+    var d = new Date(start.getTime() + w * 7 * 864e5);
+    h += '<span style="left:' + pct(w * 7) + '">' + (d.getMonth() + 1) + '/' + d.getDate() + '</span>';
+  }
+  h += '</div>';
+  // milestone row
+  h += '<div class="name grp">里程碑</div><div class="track" style="height:44px">';
+  ms.forEach(function (m) {
+    var x = pct(day(m[1], m[2]));
+    h += '<span class="ms" style="left:' + x + '"></span><span class="mslab" style="left:calc(' + x + ' + 9px);top:22px">' + m[0] + ' ' + m[1] + '/' + m[2] + '</span>';
+  });
+  h += '<span class="today" style="left:' + pct(day(10, 7)) + '" title="今天"></span></div>';
+  rows.forEach(function (r) {
+    if (r[0] === 'grp') { h += '<div class="name grp">' + r[1] + '</div><div class="track"></div>'; return; }
+    var a = Math.max(0, day(r[2][0], r[2][1])), b = day(r[3][0], r[3][1]) + 1;
+    h += '<div class="name">' + r[1] + '</div><div class="track" style="height:28px"><span class="bar ' + r[0] + '" style="left:' + pct(a) + ';width:' + pct(b - a) + '"></span></div>';
+  });
+  el.innerHTML = h;
+})();
+</script>

@@ -1,0 +1,28 @@
+# 課程簡報等大檔（GitHub 單檔上限 100MB）
+*.pptx
+*.pdf
+*.mp4
+
+# MediaMTX：執行檔用 stream/install_mediamtx.sh 下載
+stream/mediamtx
+stream/mediamtx.default.yml
+stream/LICENSE.mediamtx
+stream/*.log
+stream/auto.crt
+stream/auto.key
+
+# ROS2 編譯產物
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 編輯器 / 系統
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,6 @@
+# 統一換行字元：避免 Windows 同學編輯後 .sh 在 Pi 上不能執行
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+*.ino text eol=lf
+*.yml text eol=lf

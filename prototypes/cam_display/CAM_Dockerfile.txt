@@ -1,0 +1,13 @@
+FROM debian:bookworm-slim
+
+# 只安裝容器呼叫顯示視窗與存取相機底層所需的極輕量系統庫
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    libgl1 \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY cam_display.py /app/cam_display.py
+
+CMD ["python3", "cam_display.py"]
