@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Vacuum Teleop</title>
+<style>
+  :root { --fg: #fff; --dim: rgba(255,255,255,.6); --panel: rgba(0,0,0,.55); --ok: #3ddc84; --warn: #ffb300; --bad: #ff5252; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--fg); overflow: hidden;
+               font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif; user-select: none; }
+  #video { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
+  .panel { position: fixed; background: var(--panel); border-radius: 12px; padding: 8px 12px; backdrop-filter: blur(4px); }
+  #hud { top: 10px; left: 50%; transform: translateX(-50%); text-align: center; width: min(420px, calc(100% - 32px)); }
+  #tape { width: 100%; height: 34px; display: block; }
+  #yawRow { display: flex; align-items: center; justify-content: center; gap: 14px; }
+  #yaw { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 4.5ch; }
+  #car { width: 40px; height: 40px; }
+  #rate { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+  #stats { top: 10px; left: 10px; font-size: 12px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--bad); margin-right: 5px; }
+  #log { bottom: 10px; left: 50%; transform: translateX(-50%); font-size: 12px; max-width: calc(100% - 32px);
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .3s; }
+  #joy { position: fixed; left: 24px; bottom: 24px; width: 160px; height: 160px; border-radius: 50%;
+         background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.35); touch-action: none; }
+  #knob { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px;
+          border-radius: 50%; background: rgba(255,255,255,.75); pointer-events: none; }
+  #right { position: fixed; right: 20px; bottom: 24px; display: flex; flex-direction: column; gap: 12px; align-items: flex-end; }
+  button { font: inherit; font-size: 16px; border: 0; border-radius: 12px; padding: 12px 18px; color: #fff;
+           background: rgba(255,255,255,.18); touch-action: manipulation; }
+  button:active { background: rgba(255,255,255,.35); }
+  #stop { background: var(--bad); font-weight: 700; font-size: 20px; padding: 18px 26px; }
+  #speedBox { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  #help { font-size: 11px; color: var(--dim); text-align: right; }
+  @media (max-width: 520px) { #stats { top: auto; bottom: 200px; } }
+</style>
+</head>
+<body>
+<iframe id="video" allow="autoplay"></iframe>
+
+<div id="hud" class="panel">
+  <canvas id="tape"></canvas>
+  <div id="yawRow">
+    <svg id="car" viewBox="-20 -20 40 40"><g id="carG">
+      <rect x="-9" y="-12" width="18" height="24" rx="4" fill="none" stroke="#fff" stroke-width="2.5"/>
+      <path d="M0 -18 L6 -10 L-6 -10 Z" fill="#3ddc84"/></g></svg>
+    <div id="yaw">--°</div>
+  </div>
+  <div id="rate">-- °/s</div>
+</div>
+
+<div id="stats" class="panel">
+  <div><span class="dot" id="wsDot"></span><span id="wsTxt">連線中…</span></div>
+  <div id="mcuTxt">STM32：--</div>
+  <div>網頁↔Pi：<span id="rttWeb">--</span> ms</div>
+  <div>Pi↔STM32：<span id="rttMcu">--</span> ms</div>
+  <div id="cmdTxt">指令：0 / 0</div>
+</div>
+
+<div id="log" class="panel"></div>
+
+<div id="joy"><div id="knob"></div></div>
+
+<div id="right">
+  <div id="help">WASD／方向鍵 移動 · 空白鍵 停車 · Z 歸零</div>
+  <div id="speedBox" class="panel">速度 <input id="speed" type="range" min="0.2" max="1" step="0.05" value="0.6"> <span id="speedTxt">60%</span></div>
+  <button id="zero">航向歸零</button>
+  <button id="stop">STOP</button>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const host = location.hostname;
+$('video').src = `http://${host}:8889/cam/?controls=false&muted=true&autoplay=true&playsinline=true`;
+
+// ---------- WebSocket ----------
+let ws = null, pingSent = {}, pingId = 0;
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => { $('wsDot').style.background = 'var(--ok)'; $('wsTxt').textContent = '已連線'; };
+  ws.onclose = () => {
+    $('wsDot').style.background = 'var(--bad)'; $('wsTxt').textContent = '斷線，重連中…';
+    setTimeout(connect, 1000);
+  };
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.t === 'tel') showTelemetry(m);
+    else if (m.t === 'pong' && pingSent[m.id]) {
+      $('rttWeb').textContent = (performance.now() - pingSent[m.id]).toFixed(0);
+      delete pingSent[m.id];
+    } else if (m.t === 'log') showLog(m.msg);
+  };
+}
+function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+setInterval(() => { pingSent = { [++pingId]: performance.now() }; send({ t: 'ping', id: pingId }); }, 1000);
+connect();
+
+// ---------- 遙測 ----------
+const ST = { 0: ['正常', 'var(--ok)'], 1: ['IMU 校正中，請勿移動', 'var(--warn)'],
+             2: ['IMU 錯誤（檢查接線）', 'var(--bad)'], 255: ['序列埠斷線', 'var(--bad)'] };
+let yaw = 0;
+function showTelemetry(m) {
+  yaw = m.yaw;
+  $('yaw').textContent = m.yaw.toFixed(1) + '°';
+  $('rate').textContent = m.rate.toFixed(1) + ' °/s';
+  $('carG').setAttribute('transform', `rotate(${-m.yaw})`);  // 逆時針為正
+  const [txt, col] = ST[m.st] || ['?', 'var(--bad)'];
+  $('mcuTxt').innerHTML = `STM32：<span style="color:${col}">${txt}</span>`;
+  $('rttMcu').textContent = m.rtt == null ? '--' : m.rtt.toFixed(1);
+  drawTape();
+}
+let logTimer;
+function showLog(msg) {
+  $('log').textContent = 'STM32：' + msg; $('log').style.opacity = 1;
+  clearTimeout(logTimer); logTimer = setTimeout(() => $('log').style.opacity = 0, 4000);
+}
+
+// 航向刻度帶：左轉（yaw 變大）時刻度往右移
+const tape = $('tape'), ctx = tape.getContext('2d');
+function drawTape() {
+  const dpr = window.devicePixelRatio || 1, W = tape.clientWidth, H = tape.clientHeight;
+  if (tape.width !== W * dpr) { tape.width = W * dpr; tape.height = H * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const pxPerDeg = W / 120, cx = W / 2;
+  ctx.strokeStyle = '#fff'; ctx.fillStyle = '#fff'; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  for (let a = Math.ceil((yaw - 70) / 5) * 5; a <= yaw + 70; a += 5) {
+    const x = cx - (a - yaw) * pxPerDeg, major = a % 30 === 0;
+    ctx.globalAlpha = 1 - Math.abs(x - cx) / cx * 0.8;
+    ctx.beginPath(); ctx.moveTo(x, H); ctx.lineTo(x, H - (major ? 14 : a % 10 === 0 ? 9 : 5)); ctx.stroke();
+    if (major) { let d = ((a + 180) % 360 + 360) % 360 - 180; ctx.fillText(d, x, 11); }
+  }
+  ctx.globalAlpha = 1; ctx.fillStyle = '#3ddc84';
+  ctx.beginPath(); ctx.moveTo(cx, H - 16); ctx.lineTo(cx - 6, H - 26); ctx.lineTo(cx + 6, H - 26); ctx.fill();
+}
+window.addEventListener('resize', drawTape);
+drawTape();
+
+// ---------- 控制 ----------
+const keys = new Set();
+let joy = null;  // {v, w}，-1~1
+const speed = () => parseFloat($('speed').value);
+$('speed').oninput = () => $('speedTxt').textContent = Math.round(speed() * 100) + '%';
+
+function currentCmd() {
+  if (joy) return { v: joy.v * speed(), w: joy.w * speed() };
+  let v = 0, w = 0;
+  if (keys.has('w') || keys.has('arrowup')) v += 1;
+  if (keys.has('s') || keys.has('arrowdown')) v -= 1;
+  if (keys.has('a') || keys.has('arrowleft')) w += 1;
+  if (keys.has('d') || keys.has('arrowright')) w -= 1;
+  return { v: v * speed(), w: w * speed() * 0.7 };
+}
+// 20Hz 持續送指令（伺服器 0.3 秒沒收到就自動停車）
+let idleSent = 0;
+setInterval(() => {
+  const c = currentCmd(), moving = c.v !== 0 || c.w !== 0;
+  if (moving) idleSent = 0;
+  if (moving || idleSent++ < 3) send({ t: 'cmd', v: c.v, w: c.w });
+  $('cmdTxt').textContent = `指令：${c.v.toFixed(2)} / ${c.w.toFixed(2)}`;
+}, 50);
+
+function stop() { keys.clear(); joy = null; resetKnob(); send({ t: 'cmd', v: 0, w: 0 }); }
+$('stop').onclick = stop;
+$('zero').onclick = () => send({ t: 'zero' });
+
+const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === ' ') { stop(); e.preventDefault(); }
+  else if (k === 'z') send({ t: 'zero' });
+  else if (MOVE_KEYS.includes(k)) { keys.add(k); e.preventDefault(); }
+});
+window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+window.addEventListener('blur', stop);
+document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
+
+// 搖桿（觸控／滑鼠）
+const pad = $('joy'), knob = $('knob');
+function resetKnob() { knob.style.transform = ''; }
+function onJoy(e) {
+  const r = pad.getBoundingClientRect(), R = r.width / 2;
+  let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R);
+  const d = Math.hypot(dx, dy);
+  if (d > R) { dx *= R / d; dy *= R / d; }
+  knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  const dead = v => Math.abs(v) < 0.08 ? 0 : v;
+  joy = { v: dead(-dy / R), w: dead(-dx / R) * 0.7 };
+}
+pad.addEventListener('pointerdown', e => { pad.setPointerCapture(e.pointerId); onJoy(e); });
+pad.addEventListener('pointermove', e => { if (pad.hasPointerCapture(e.pointerId)) onJoy(e); });
+for (const ev of ['pointerup', 'pointercancel']) pad.addEventListener(ev, () => { joy = null; resetKnob(); });
+</script>
+</body>
+</html>

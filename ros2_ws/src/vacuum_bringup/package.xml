@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>vacuum_bringup</name>
+  <version>0.1.0</version>
+  <description>launch 檔與參數</description>
+  <maintainer email="jamie@example.com">jamie</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>vacuum_bridge</exec_depend>
+  <exec_depend>vacuum_teleop</exec_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -26,3 +26,6 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+# PlatformIO 編譯產物
+firmware/.pio/
