@@ -101,10 +101,11 @@ The agent can build, flash and test the firmware on its own via these scripts. L
   The bridge tolerates this. Any test script must wait for `L boot vacuum-fw`.
 - 2KB RAM on the Nano: if adding many strings, consider `F("...")` to keep literals in flash.
 
-## Uncommitted work
+## Git state
 
-Last commit `b8b9741`. Uncommitted (2026-10-17): Nano pin remap + D7 soft PWM, motor ramp (`A`), IMU error tolerance,
-`imu_motor_test.py/.sh`, test_serial DTR reset, STM32 → Nano text in web page/bridge/README.
+Branch `feature/nano-pinout-motor-test` (commit `f142c14`, pushed, PR not opened yet): Nano pin remap + D7 soft PWM,
+motor ramp (`A`), IMU error tolerance, `imu_motor_test.py/.sh`, test_serial DTR reset, devlog `docs/devlog/2026-10-17.md`.
+Devlogs go in `docs/devlog/YYYY-MM-DD.md` (Traditional Chinese).
 
 ## Next steps / open items
 
