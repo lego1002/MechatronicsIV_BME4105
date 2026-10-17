@@ -103,8 +103,7 @@ The agent can build, flash and test the firmware on its own via these scripts. L
 
 ## Git state
 
-Branch `feature/nano-pinout-motor-test` (commit `f142c14`, pushed, PR not opened yet): Nano pin remap + D7 soft PWM,
-motor ramp (`A`), IMU error tolerance, `imu_motor_test.py/.sh`, test_serial DTR reset, devlog `docs/devlog/2026-10-17.md`.
+All work is on `main` (pushed). The user pushes straight to `main` (no PRs) despite the README's branch workflow.
 Devlogs go in `docs/devlog/YYYY-MM-DD.md` (Traditional Chinese).
 
 ## Next steps / open items
