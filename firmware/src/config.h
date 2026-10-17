@@ -9,16 +9,17 @@
 #define I2C_HZ        100000  // 杜邦線＋弱上拉，400kHz 不穩
 #define IMU_YAW_SIGN  (+1)    // 晶片正面朝上：逆時針（左轉）為正。裝反了改成 -1
 
-// ---- TB6612FNG ----
-// PWMA/PWMB 用 D9/D10（Timer1，31kHz，聽不到馬達嘯叫；不影響 millis()）
-#define PIN_PWMA  9    // 左馬達
-#define PIN_PWMB  10   // 右馬達
-#define PIN_AIN1  7
-#define PIN_AIN2  8
-#define PIN_BIN1  4
-#define PIN_BIN2  5
-#define PIN_STBY  A0   // -1 = 不使用（STBY 直接接 VCC）
-// D2/D3（外部中斷）、D11/D12、A1~A3 保留給超音波／蜂鳴器／吸塵器
+// ---- TB6612FNG ----（洞洞板實際焊線）
+// PWMA = D6 是 Timer0 硬體 PWM（976Hz，和 millis() 共用計時器，不能改頻率）
+// PWMB = D7 沒有硬體 PWM，用 Timer1 中斷模擬（同樣 976Hz），所以 D9/D10 不能再拿來當 PWM
+#define PIN_PWMA  6    // 左馬達
+#define PIN_PWMB  7    // 右馬達
+#define PIN_AIN1  A3
+#define PIN_AIN2  A2
+#define PIN_BIN1  A1
+#define PIN_BIN2  A0
+#define PIN_STBY  -1   // STBY 直接接 3.3V（常駐致能，停車靠 PWM=0）
+// D2~D5、D8~D12 保留給超音波／蜂鳴器／吸塵器（A6/A7 只能類比輸入）
 
 #else
 // ================= STM32 Nucleo-L432KC =================
@@ -45,6 +46,8 @@
 #endif
 
 #define CMD_TIMEOUT_MS   300    // 超過這麼久沒收到指令就停車
+#define MOTOR_RAMP_MS    300    // 加減速限制：PWM 從 0 到 255 至少花這麼久（ms），0 = 不限制。可用 A 指令即時調整
+#define IMU_MAX_ERRORS   10     // 連續讀取失敗這麼多次才當作 IMU 斷線（偶發的 I2C 雜訊直接跳過那一筆）
 
 // ---- 其他 ----
 #define SERIAL_BAUD      115200

@@ -2,7 +2,7 @@
 <package format="3">
   <name>vacuum_bridge</name>
   <version>0.1.0</version>
-  <description>序列埠橋接：STM32 與 ROS2 topic 互轉</description>
+  <description>序列埠橋接：Arduino Nano 與 ROS2 topic 互轉</description>
   <maintainer email="jamie@example.com">jamie</maintainer>
   <license>MIT</license>
   <exec_depend>rclpy</exec_depend>

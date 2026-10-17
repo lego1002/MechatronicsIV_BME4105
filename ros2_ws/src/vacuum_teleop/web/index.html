@@ -51,9 +51,9 @@
 
 <div id="stats" class="panel">
   <div><span class="dot" id="wsDot"></span><span id="wsTxt">連線中…</span></div>
-  <div id="mcuTxt">STM32：--</div>
+  <div id="mcuTxt">Nano：--</div>
   <div>網頁↔Pi：<span id="rttWeb">--</span> ms</div>
-  <div>Pi↔STM32：<span id="rttMcu">--</span> ms</div>
+  <div>Pi↔Nano：<span id="rttMcu">--</span> ms</div>
   <div id="cmdTxt">指令：0 / 0</div>
 </div>
 
@@ -105,13 +105,13 @@ function showTelemetry(m) {
   $('rate').textContent = m.rate.toFixed(1) + ' °/s';
   $('carG').setAttribute('transform', `rotate(${-m.yaw})`);  // 逆時針為正
   const [txt, col] = ST[m.st] || ['?', 'var(--bad)'];
-  $('mcuTxt').innerHTML = `STM32：<span style="color:${col}">${txt}</span>`;
+  $('mcuTxt').innerHTML = `Nano：<span style="color:${col}">${txt}</span>`;
   $('rttMcu').textContent = m.rtt == null ? '--' : m.rtt.toFixed(1);
   drawTape();
 }
 let logTimer;
 function showLog(msg) {
-  $('log').textContent = 'STM32：' + msg; $('log').style.opacity = 1;
+  $('log').textContent = 'Nano：' + msg; $('log').style.opacity = 1;
   clearTimeout(logTimer); logTimer = setTimeout(() => $('log').style.opacity = 0, 4000);
 }
 

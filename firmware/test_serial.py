@@ -6,6 +6,11 @@ import serial
 
 port = sys.argv[1] if len(sys.argv) > 1 else '/dev/ttyUSB0'
 s = serial.Serial(port, 115200, timeout=0.1)
+# 自己拉一次 DTR 讓 Nano 重開：avrdude 之類的工具會清掉 tty 的 hupcl，之後開序列埠就不會自動重開
+s.dtr = False
+time.sleep(0.1)
+s.reset_input_buffer()
+s.dtr = True
 fails = 0
 
 

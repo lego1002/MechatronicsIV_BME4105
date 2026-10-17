@@ -24,6 +24,9 @@ static bool calibrating = false;
 static uint32_t calibStartMs = 0;
 static float calibSum = 0;
 static uint32_t calibCount = 0;
+static bool biasValid = false;     // 校正過一次之後，IMU 斷線重連就沿用舊的偏移和航向，不再重新校正
+static uint8_t imuErrRun = 0;      // 連續讀取失敗次數
+static uint16_t imuErrCount = 0;   // 累計讀取失敗次數（每秒回報一次）
 
 static bool imuWrite(uint8_t reg, uint8_t val) {
   Wire.beginTransmission(IMU_ADDR);
@@ -76,7 +79,8 @@ static bool imuInit() {
   }
   delay(50);
   Serial.println("L imu ok");
-  startCalibration();
+  // 馬達雜訊造成的斷線重連時車子可能正在動，這時重新校正會算出錯的偏移，所以只在第一次校正
+  if (!biasValid) startCalibration();
   return true;
 }
 
@@ -90,11 +94,17 @@ static void imuUpdate() {
 
   uint8_t b[2];
   if (!imuRead(0x47, b, 2)) {  // GYRO_ZOUT_H/L
-    Serial.println("L imu read error");
-    imuOk = false;
-    imuRetryMs = millis();
+    // 偶發錯誤就跳過這一筆（下一筆的 dt 會涵蓋這段時間），連續失敗才當作斷線
+    imuErrCount++;
+    if (++imuErrRun >= IMU_MAX_ERRORS) {
+      Serial.println("L imu lost");
+      imuOk = false;
+      imuRetryMs = millis();
+      imuErrRun = 0;
+    }
     return;
   }
+  imuErrRun = 0;
   float raw = (int16_t)((b[0] << 8) | b[1]);
 
   if (calibrating) {
@@ -105,6 +115,7 @@ static void imuUpdate() {
       biasRaw = calibSum / calibCount;
       yawDeg = 0;
       calibrating = false;
+      biasValid = true;
       Serial.print("L calib done bias=");
       Serial.print(biasRaw / GYRO_LSB_PER_DPS, 3);
       Serial.println(" dps");
@@ -125,7 +136,10 @@ static void imuUpdate() {
 
 // ---------------- 馬達 ----------------
 static bool motorsAllowed = true;
-static int16_t cmdLeft = 0, cmdRight = 0;
+static int16_t cmdLeft = 0, cmdRight = 0;   // 目標
+static int16_t outLeft = 0, outRight = 0;   // 實際輸出（經過加減速限制）
+static uint16_t rampMs = MOTOR_RAMP_MS;
+static uint32_t lastRampUs = 0;
 static uint32_t lastCmdMs = 0;
 static uint32_t lastNonzeroMs = 0;
 
@@ -133,16 +147,56 @@ static bool motorsIdle() { return millis() - lastNonzeroMs > 1000; }
 
 #if defined(ARDUINO_ARCH_AVR)
 // ---- PWM ----
-// D9/D10 = Timer1 OC1A/OC1B。預設 490Hz 會嘯叫，改成 prescaler 1 → 16MHz/510 ≈ 31kHz
-static bool solderBridgesShorted() { return false; }  // Nano 沒有 Nucleo 的錫橋問題
+// 有硬體 PWM 的腳位（D5/D6 = Timer0，976Hz）直接 analogWrite。
+// 沒有的（例如 D7）用 Timer1 中斷模擬：8-bit fast PWM、prescaler 64 → 16MHz/64/256 ≈ 976Hz，
+// 溢位時拉高、比較值到了拉低。Timer1 只用中斷，不接 OC1A/OC1B（D9/D10）腳位。
+#define SOFT_PWM_MIN  4      // 太小的工作週期中斷來不及處理，直接當 0（馬達也轉不動）
+
+static int idleSda = -1, idleScl = -1;
+// Nano 沒有 Nucleo 的錫橋問題；這裡只在 Wire.begin() 前關掉內建上拉讀一次 I2C 電位：
+// MPU6050 模組有通電的話，板上的上拉電阻會讓兩條線都是 1
+static bool solderBridgesShorted() {
+  pinMode(SDA, INPUT);
+  pinMode(SCL, INPUT);
+  delayMicroseconds(50);
+  idleSda = digitalRead(SDA);
+  idleScl = digitalRead(SCL);
+  return false;
+}
 static bool hasHwPwm(uint8_t pin) { return digitalPinToTimer(pin) != NOT_ON_TIMER; }
-static void pwmInit(int, uint8_t pin) {
+
+static volatile uint8_t *softOut[2] = {nullptr, nullptr};
+static uint8_t softMask[2];
+static volatile uint8_t softDuty[2] = {0, 0};
+
+ISR(TIMER1_OVF_vect) {
+  for (uint8_t i = 0; i < 2; i++)
+    if (softOut[i] && softDuty[i]) *softOut[i] |= softMask[i];
+}
+ISR(TIMER1_COMPA_vect) { if (softOut[0] && softDuty[0] < 255) *softOut[0] &= ~softMask[0]; }
+ISR(TIMER1_COMPB_vect) { if (softOut[1] && softDuty[1] < 255) *softOut[1] &= ~softMask[1]; }
+
+static void pwmInit(int idx, uint8_t pin) {
   pinMode(pin, OUTPUT);
   digitalWrite(pin, LOW);
-  if (digitalPinToTimer(pin) == TIMER1A || digitalPinToTimer(pin) == TIMER1B)
-    TCCR1B = (TCCR1B & ~0x07) | 0x01;
+  if (hasHwPwm(pin)) return;
+  softOut[idx] = portOutputRegister(digitalPinToPort(pin));
+  softMask[idx] = digitalPinToBitMask(pin);
+  TCCR1A = _BV(WGM10);                        // fast PWM 8-bit，OC1A/OC1B 不輸出
+  TCCR1B = _BV(WGM12) | _BV(CS11) | _BV(CS10);  // prescaler 64
+  TIMSK1 |= _BV(TOIE1) | (idx == 0 ? _BV(OCIE1A) : _BV(OCIE1B));
 }
-static void pwmWrite(int, uint8_t pin, uint8_t duty) { analogWrite(pin, duty); }
+
+static void pwmWrite(int idx, uint8_t pin, uint8_t duty) {
+  if (!softOut[idx]) {
+    analogWrite(pin, duty);
+    return;
+  }
+  if (duty < SOFT_PWM_MIN) duty = 0;
+  softDuty[idx] = duty;
+  if (idx == 0) OCR1A = duty;
+  else OCR1B = duty;
+}
 
 #else
 static int idleSda = -1, idleScl = -1;
@@ -232,8 +286,37 @@ static void setMotor(int idx, uint8_t pwmPin, uint8_t in1, uint8_t in2, int16_t 
 
 static void applyMotors() {
   if (!motorsAllowed) return;
-  setMotor(0, PIN_PWMA, PIN_AIN1, PIN_AIN2, cmdLeft);
-  setMotor(1, PIN_PWMB, PIN_BIN1, PIN_BIN2, cmdRight);
+  setMotor(0, PIN_PWMA, PIN_AIN1, PIN_AIN2, outLeft);
+  setMotor(1, PIN_PWMB, PIN_BIN1, PIN_BIN2, outRight);
+}
+
+// 急停（S、指令逾時）：不經過加減速，直接放掉（TB6612 IN1=IN2=L 是滑行，不會有煞車電流）
+static void stopNow() {
+  cmdLeft = cmdRight = outLeft = outRight = 0;
+  applyMotors();
+}
+
+// 加減速限制：輸出每次最多往目標靠近 255 * 經過時間 / rampMs。
+// 突然全速或正反轉會抽大電流，電壓掉下來、雜訊變大，IMU 讀值會受影響
+static int16_t rampToward(int16_t out, int16_t target, int16_t step) {
+  if (target > out) return target - out > step ? out + step : target;
+  return out - target > step ? out - step : target;
+}
+
+static void rampUpdate() {
+  uint32_t now = micros();
+  uint32_t el = now - lastRampUs;
+  if (outLeft == cmdLeft && outRight == cmdRight) {
+    lastRampUs = now;
+    return;
+  }
+  uint32_t step = rampMs == 0 ? 510 : el * 255UL / (rampMs * 1000UL);
+  if (step > 510) step = 510;
+  if (step == 0) return;  // 還不到 1 格，等累積
+  lastRampUs = now;
+  outLeft = rampToward(outLeft, cmdLeft, step);
+  outRight = rampToward(outRight, cmdRight, step);
+  applyMotors();
 }
 
 static void motorsInit(bool bridgesShorted) {
@@ -282,12 +365,18 @@ static void handleLine(char *s) {
           static uint32_t lastWarn = 0;
           if (millis() - lastWarn > 2000) { lastWarn = millis(); reportMotorWarning(); }
         }
-        applyMotors();
       }
       break;
     case 'S':
-      cmdLeft = cmdRight = 0;
-      applyMotors();
+      stopNow();
+      break;
+    case 'A':  // A <ms>：加減速限制，PWM 0→255 花的時間，0 = 不限制
+      if (sscanf(s + 1, "%d", &a) == 1) {
+        rampMs = constrain(a, 0, 5000);
+        Serial.print("L ramp ");
+        Serial.print(rampMs);
+        Serial.println(" ms");
+      }
       break;
     case 'Z':  // 航向角歸零並重新估計偏移（車子要靜止）
       if (imuOk) startCalibration();
@@ -362,7 +451,13 @@ void setup() {
 
   delay(100);
   Serial.println("L boot vacuum-fw");
-#if !defined(ARDUINO_ARCH_AVR)
+#if defined(ARDUINO_ARCH_AVR)
+  Serial.print(F("L i2c idle SDA="));
+  Serial.print(idleSda);
+  Serial.print(F(" SCL="));
+  Serial.print(idleScl);
+  Serial.println(idleSda && idleScl ? F(" ext-pullup=yes") : F(" ext-pullup=NO (IMU module unpowered or not connected?)"));
+#else
   Serial.print("L i2c idle SDA=");
   Serial.print(idleSda);
   Serial.print(" SCL=");
@@ -399,10 +494,18 @@ void loop() {
   }
 
   // 安全機制：太久沒收到指令就停車
-  if ((cmdLeft || cmdRight) && millis() - lastCmdMs > CMD_TIMEOUT_MS) {
-    cmdLeft = cmdRight = 0;
-    applyMotors();
+  if ((cmdLeft || cmdRight || outLeft || outRight) && millis() - lastCmdMs > CMD_TIMEOUT_MS) {
+    stopNow();
     Serial.println("L cmd timeout, stop");
+  }
+  rampUpdate();
+
+  static uint32_t lastErrReport = 0;
+  if (imuErrCount && millis() - lastErrReport >= 1000) {
+    lastErrReport = millis();
+    Serial.print("L imu read errors ");
+    Serial.println(imuErrCount);
+    imuErrCount = 0;
   }
 
   static uint32_t lastReport = 0;

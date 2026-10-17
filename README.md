@@ -1,7 +1,7 @@
 # 遙控／自走吸塵機器人
 
 台大生機系「機電整合（四）」期末專題。
-這台吸塵機器人用 **Raspberry Pi 4（ROS2 Humble）** 搭配 **STM32 Nucleo-L432KC**，要完成兩個任務：
+這台吸塵機器人用 **Raspberry Pi 4（ROS2 Humble）** 搭配 **Arduino Nano**（舊版用 STM32 Nucleo-L432KC，程式還保留），要完成兩個任務：
 
 - **期中（11/13）**：透過影像串流遠端遙控，在 3m × 3m 的場地內吸紙片後離場
 - **期末（12/11）**：自走模式，並重考一次串流遙控。**不使用輪子編碼器**，只靠 IMU（MPU6050）、兩顆超音波（HC-SR04）和攝影機完成定位、吸塵和影像辨識
@@ -12,9 +12,9 @@
 筆電／手機 ──WebRTC (Wi-Fi)──▶ Raspberry Pi 4 ◀──USB/UVC── Logitech C310
                                │  ROS2 Humble
                                │  串流（MediaMTX + 硬體 H.264）
-                    USB 虛擬序列埠 115200
+                    USB 序列埠（FT232R）115200
                                │
-                      Nucleo-L432KC ──PWM──▶ TB6612FNG ──▶ 直流馬達 ×2
+                       Arduino Nano ──PWM──▶ TB6612FNG ──▶ 直流馬達 ×2
                                ├──I²C──── MPU6050（陀螺儀 → 航向角）
                                └──GPIO─── HC-SR04 ×2（前方、右側測距）
 ```
@@ -27,7 +27,7 @@
 |---|---|---|
 | [`stream/`](stream/) | 低延遲影像串流（WebRTC） | ✅ 可用 |
 | [`ros2_ws/`](ros2_ws/) | ROS2 工作空間（Docker）：bridge、網頁遙控 ✅；定位、任務、辨識 🚧 | 🚧 部分可用 |
-| [`firmware/`](firmware/) | STM32 韌體（IMU 航向 ✅、馬達 ⚠ 接線待修、超音波 🚧） | 🚧 部分可用 |
+| [`firmware/`](firmware/) | Arduino Nano 韌體（IMU 航向 ✅、馬達 🚧 測試中、超音波 🚧） | 🚧 部分可用 |
 | [`docs/`](docs/) | 架構設計、Git 教學 | 📝 |
 | [`prototypes/`](prototypes/) | 早期測試程式（不維護） | — |
 
@@ -41,7 +41,7 @@ git clone <repo網址> vacuum && cd vacuum
 ./stream/start.sh -d      # 瀏覽器打開 http://<Pi的IP>:8889/cam
 ./stream/stop.sh          # 關閉串流
 
-# STM32 韌體（Docker 編譯，複製到 NODE_L432KC 燒錄）
+# Nano 韌體（Docker 編譯 + avrdude 燒錄，Nano 接 USB 會出現 /dev/ttyUSB0）
 ./firmware/flash.sh
 
 # ROS2 + 網頁遙控（Docker），瀏覽器打開 http://<Pi的IP>:8080
@@ -53,7 +53,7 @@ git clone <repo網址> vacuum && cd vacuum
 | 元件 | 型號 | 用途 |
 |---|---|---|
 | 主控電腦 | Raspberry Pi 4 Model B（Ubuntu 22.04） | ROS2、串流、影像辨識 |
-| 微控制器 | STM32 Nucleo-L432KC | 馬達 PWM、讀取感測器 |
+| 微控制器 | Arduino Nano（ATmega328P） | 馬達 PWM、讀取感測器 |
 | 攝影機 | Logitech C310（USB） | 串流、辨識圓形標的 |
 | IMU | MPU6050 | 陀螺儀 z 軸 → 航向角 |
 | 測距 | HC-SR04 × 2 | 量測前方、右側到牆的距離 |

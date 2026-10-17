@@ -1,11 +1,11 @@
-"""STM32 <-> ROS2 序列埠橋接。協定見 firmware/README.md。
+"""Arduino Nano <-> ROS2 序列埠橋接。協定見 firmware/README.md。
 
 訂閱  /cmd_vel        geometry_msgs/Twist   linear.x、angular.z 範圍 -1~1（滿速的比例，angular 正 = 左轉）
 發布  /imu/yaw        std_msgs/Float32      航向角（度，-180~180，逆時針為正）
       /imu/yaw_rate   std_msgs/Float32      角速度（度/秒）
       /mcu/status     std_msgs/UInt8        0 正常 / 1 IMU 校正中 / 2 IMU 錯誤 / 255 序列埠斷線
       /mcu/log        std_msgs/String       韌體的 L 訊息
-      /mcu/rtt_ms     std_msgs/Float32      Pi <-> STM32 來回延遲
+      /mcu/rtt_ms     std_msgs/Float32      Pi <-> Nano 來回延遲
 服務  /imu/zero       std_srvs/Trigger      航向角歸零（車子要靜止 2 秒）
 """
 import threading
