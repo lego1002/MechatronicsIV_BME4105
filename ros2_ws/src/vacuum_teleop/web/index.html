@@ -76,11 +76,16 @@ $('video').src = `http://${host}:8889/cam/?controls=false&muted=true&autoplay=tr
 // ---------- WebSocket ----------
 let ws = null, pingSent = {}, pingId = 0;
 function connect() {
-  ws = new WebSocket(`ws://${location.host}/ws`);
-  ws.onopen = () => { $('wsDot').style.background = 'var(--ok)'; $('wsTxt').textContent = '已連線'; };
+  ws = new WebSocket(`ws://${location.host}/ws?k=__WS_TOKEN__`);
+  let opened = false;
+  ws.onopen = () => { opened = true; $('wsDot').style.background = 'var(--ok)'; $('wsTxt').textContent = '已連線'; };
   ws.onclose = () => {
     $('wsDot').style.background = 'var(--bad)'; $('wsTxt').textContent = '斷線，重連中…';
-    setTimeout(connect, 1000);
+    // 一次都沒連上：可能是 token 失效（伺服器重開過）。網頁拿得到就重新載入拿新的 token，拿不到（Pi 斷線）就繼續重試
+    if (!opened) setTimeout(() => fetch(location.href, { cache: 'no-store' })
+      .then(r => r.ok ? location.reload() : connect())
+      .catch(connect), 2000);
+    else setTimeout(connect, 1000);
   };
   ws.onmessage = e => {
     const m = JSON.parse(e.data);

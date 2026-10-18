@@ -3,12 +3,20 @@
 影像由 MediaMTX（:8889/cam）提供，網頁用 iframe 嵌進來；這裡只處理遙測和控制，
 所以控制延遲不會被影像拖慢。
 
+密碼：參數 password（預設讀環境變數 TELEOP_PASSWORD，run.sh 從 ros2_ws/teleop_password 帶進來）。
+網頁用 HTTP Basic Auth（帳號隨意，只檢查密碼）；通過後伺服器把這次啟動產生的 token 塞進網頁，
+WebSocket 要帶 ?k=<token> 才接受，所以沒密碼的人不能直接連 /ws 控制馬達。密碼留空 = 不檢查。
+
 瀏覽器 -> 伺服器  {"t":"cmd","v":-1~1,"w":-1~1}   {"t":"zero"}   {"t":"ping","id":n}
 伺服器 -> 瀏覽器  {"t":"tel",...} 25Hz           {"t":"pong","id":n}   {"t":"log","msg":...}
 """
 import asyncio
+import base64
+import binascii
+import hmac
 import json
 import os
+import secrets
 import threading
 import time
 from http import HTTPStatus
@@ -27,6 +35,7 @@ class Teleop(Node):
         super().__init__('teleop')
         self.web_port = self.declare_parameter('web_port', 8080).value
         self.cmd_timeout = self.declare_parameter('cmd_timeout', 0.3).value
+        self.password = self.declare_parameter('password', os.environ.get('TELEOP_PASSWORD', '')).value
 
         self.state = {'yaw': 0.0, 'rate': 0.0, 'st': 255, 'rtt': None}
         self.logs = []
@@ -62,12 +71,28 @@ class Teleop(Node):
 def serve(node):
     web_dir = os.path.join(get_package_share_directory('vacuum_teleop'), 'web')
     clients = set()
+    token = secrets.token_urlsafe(16)  # 每次啟動都換，重開後網頁會要求重新登入
+    if not node.password:
+        node.get_logger().warn('沒有設定密碼（TELEOP_PASSWORD），任何人都能控制馬達')
+
+    def password_ok(headers):
+        try:
+            scheme, cred = headers.get('Authorization', '').split(' ', 1)
+            pw = base64.b64decode(cred).decode().split(':', 1)[1]
+        except (ValueError, IndexError, binascii.Error, UnicodeDecodeError):
+            return False
+        return scheme.lower() == 'basic' and hmac.compare_digest(pw.encode(), node.password.encode())
 
     async def process_request(path, headers):
         if path.startswith('/ws'):
+            if node.password and not hmac.compare_digest(path, f'/ws?k={token}'):
+                return HTTPStatus.FORBIDDEN, [], b'bad token\n'
             return None  # 交給 WebSocket
+        if node.password and not password_ok(headers):
+            return HTTPStatus.UNAUTHORIZED, [('WWW-Authenticate', 'Basic realm="vacuum", charset="UTF-8"')], \
+                '需要密碼\n'.encode()
         with open(os.path.join(web_dir, 'index.html'), 'rb') as f:
-            body = f.read()
+            body = f.read().replace(b'__WS_TOKEN__', token.encode())
         return HTTPStatus.OK, [('Content-Type', 'text/html; charset=utf-8'),
                                ('Cache-Control', 'no-cache')], body
 

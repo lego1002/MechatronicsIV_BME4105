@@ -16,6 +16,9 @@ ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
 
+# 網頁遙控密碼（run.sh 自動產生）
+ros2_ws/teleop_password
+
 # Python
 __pycache__/
 *.pyc

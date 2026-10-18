@@ -16,9 +16,13 @@ else
   echo "⚠ 找不到 Arduino Nano / Nucleo，bridge 會一直重試連線"
 fi
 
+# 網頁遙控密碼：存在 ros2_ws/teleop_password（不進 git），第一次執行自動產生，要改就直接編輯這個檔
+[ -f teleop_password ] || { (umask 077; head -c 6 /dev/urandom | base64 | tr -d '/+=' > teleop_password); }
+export TELEOP_PASSWORD=$(tr -d '\n' < teleop_password)
+
 TTY=(-i); [ -t 0 ] && TTY=(-it)
 RUN=(docker run --rm "${TTY[@]}" --net=host --ipc=host --name vacuum-ros2
-     --user "$(id -u):$(id -g)" -e HOME=/tmp -e ROS_LOG_DIR=/ws/log
+     --user "$(id -u):$(id -g)" -e HOME=/tmp -e ROS_LOG_DIR=/ws/log -e TELEOP_PASSWORD
      -v "$PWD":/ws "${DEV_ARGS[@]}" $IMG)
 BUILD='source /opt/ros/humble/setup.bash && colcon build --symlink-install && source install/setup.bash'
 
@@ -28,5 +32,5 @@ if [ "$1" = "shell" ]; then
   fi
   exec "${RUN[@]}" bash -c "$BUILD && exec bash"
 fi
-echo "網頁遙控：http://$(tailscale ip -4 2>/dev/null || hostname -I | cut -d' ' -f1):8080"
+echo "網頁遙控：http://$(tailscale ip -4 2>/dev/null || hostname -I | cut -d' ' -f1):8080（密碼：$TELEOP_PASSWORD，帳號隨意）"
 exec "${RUN[@]}" bash -c "$BUILD && ros2 launch vacuum_bringup teleop.launch.py"
