@@ -1,11 +1,13 @@
 """Arduino Nano <-> ROS2 序列埠橋接。協定見 firmware/README.md。
 
 訂閱  /cmd_vel        geometry_msgs/Twist   linear.x、angular.z 範圍 -1~1（滿速的比例，angular 正 = 左轉）
+      /vacuum/cmd    std_msgs/Bool         吸塵器開關
 發布  /imu/yaw        std_msgs/Float32      航向角（度，-180~180，逆時針為正）
       /imu/yaw_rate   std_msgs/Float32      角速度（度/秒）
       /mcu/status     std_msgs/UInt8        0 正常 / 1 IMU 校正中 / 2 IMU 錯誤 / 255 序列埠斷線
       /mcu/log        std_msgs/String       韌體的 L 訊息
       /mcu/rtt_ms     std_msgs/Float32      Pi <-> Nano 來回延遲
+      /vacuum/state   std_msgs/Bool         吸塵器實際狀態（以韌體回報為準，latched）
 服務  /imu/zero       std_srvs/Trigger      航向角歸零（車子要靜止 2 秒）
 """
 import threading
@@ -15,7 +17,8 @@ import rclpy
 import serial
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
-from std_msgs.msg import Float32, String, UInt8
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Bool, Float32, String, UInt8
 from std_srvs.srv import Trigger
 
 
@@ -25,13 +28,18 @@ class Bridge(Node):
         self.port = self.declare_parameter('port', '/dev/ttyACM0').value
         self.baud = self.declare_parameter('baud', 115200).value
         self.cmd_timeout = self.declare_parameter('cmd_timeout', 0.3).value
+        self.silence_timeout = self.declare_parameter('silence_timeout', 3.0).value
 
         self.pub_yaw = self.create_publisher(Float32, 'imu/yaw', 10)
         self.pub_rate = self.create_publisher(Float32, 'imu/yaw_rate', 10)
         self.pub_status = self.create_publisher(UInt8, 'mcu/status', 10)
         self.pub_log = self.create_publisher(String, 'mcu/log', 10)
         self.pub_rtt = self.create_publisher(Float32, 'mcu/rtt_ms', 10)
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.pub_vacuum = self.create_publisher(Bool, 'vacuum/state', latched)
+        self.pub_vacuum.publish(Bool(data=False))
         self.create_subscription(Twist, 'cmd_vel', self.on_cmd, 10)
+        self.create_subscription(Bool, 'vacuum/cmd', self.on_vacuum, 10)
         self.create_service(Trigger, 'imu/zero', self.on_zero)
 
         self.ser = None
@@ -61,10 +69,18 @@ class Bridge(Node):
                     self.ser = serial.Serial(self.port, self.baud, timeout=0.5)
                 self.get_logger().info(f'connected {self.port}')
                 self.ser.reset_input_buffer()
+                # 打開序列埠不一定會重開 Nano（見 CLAUDE.md 的 -hupcl），這裡明確關掉，狀態才會一致
+                self.write('F 0')
+                self.pub_vacuum.publish(Bool(data=False))
+                last_rx = time.monotonic()
                 while rclpy.ok():
                     raw = self.ser.readline()
                     if raw:
+                        last_rx = time.monotonic()
                         self.on_line(raw.decode(errors='replace').strip())
+                    elif time.monotonic() - last_rx > self.silence_timeout:
+                        self.reset_mcu()
+                        last_rx = time.monotonic()
             except (serial.SerialException, OSError) as e:
                 self.get_logger().warn(f'serial: {e}，1 秒後重試', throttle_duration_sec=10)
                 with self.write_lock:
@@ -72,7 +88,20 @@ class Bridge(Node):
                         self.ser.close()
                     self.ser = None
                 self.pub_status.publish(UInt8(data=255))
+                self.pub_vacuum.publish(Bool(data=False))
                 time.sleep(1.0)
+
+    def reset_mcu(self):
+        # Nano 平常每秒回報 50 次，完全沒資料就是當機了（韌體看門狗也沒救回來），用 DTR 硬體重置
+        msg = f'Nano 超過 {self.silence_timeout:g} 秒沒有資料，自動硬體重置'
+        self.get_logger().warn(msg)
+        self.pub_log.publish(String(data=msg))
+        self.pub_status.publish(UInt8(data=255))
+        with self.write_lock:
+            self.ser.dtr = False
+            time.sleep(0.1)
+            self.ser.reset_input_buffer()
+            self.ser.dtr = True
 
     def on_line(self, line):
         parts = line.split(' ', 1)
@@ -89,6 +118,11 @@ class Bridge(Node):
         elif parts[0] == 'L' and len(parts) == 2:
             self.get_logger().info(f'mcu: {parts[1]}')
             self.pub_log.publish(String(data=parts[1]))
+            # 「L vacuum on|off」「L cmd timeout, vacuum off」「L boot ...」（重開後一定是關的）
+            if parts[1].endswith('vacuum on'):
+                self.pub_vacuum.publish(Bool(data=True))
+            elif parts[1].endswith('vacuum off') or parts[1].startswith('boot'):
+                self.pub_vacuum.publish(Bool(data=False))
         elif parts[0] == 'P' and len(parts) == 2:
             t0 = self.ping_sent.pop(parts[1], None)
             if t0 is not None:
@@ -100,6 +134,9 @@ class Bridge(Node):
             return int(round(max(-1.0, min(1.0, x)) * 255))
         self.cmd = (scale(msg.linear.x), scale(msg.angular.z))
         self.cmd_time = time.monotonic()
+
+    def on_vacuum(self, msg):
+        self.write('F 1' if msg.data else 'F 0')
 
     def send_cmd(self):
         v, w = self.cmd if time.monotonic() - self.cmd_time < self.cmd_timeout else (0, 0)
@@ -126,6 +163,7 @@ def main():
         pass
     finally:
         node.write('S')
+        node.write('F 0')
         node.destroy_node()
         rclpy.try_shutdown()
 

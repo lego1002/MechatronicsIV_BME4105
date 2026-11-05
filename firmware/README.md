@@ -24,6 +24,8 @@ PlatformIO + Arduino 框架。Pi 上不用裝工具鏈，編譯在 Docker 裡進
 - MPU6050 陀螺儀 z 軸 @200Hz 積分出航向角；開機靜止 2 秒估計偏移，靜止時持續追蹤偏移
 - TB6612FNG 雙馬達差速驅動（Nano：PWMA = D6 硬體 PWM，PWMB = D7 用 Timer1 中斷模擬，都是 976Hz）
 - 安全機制：300ms 沒收到指令就停車
+- 防當機（Nano）：看門狗 500ms，主迴圈卡住就自動重開，重開後馬達和吸塵器都是關閉的，開機回報 `L reset cause: watchdog` 或 `other`（`other` = 上電、壓降、reset 鍵或 DTR，bootloader 不提供細分）。bridge 超過 3 秒沒收到資料會再用 DTR 硬體重置；重開後 IMU 要重新校正
+- 吸塵器：D8 控制繼電器，開機預設關閉；2 秒沒收到任何指令會自動關閉（`S` 和馬達逾時不會關吸塵器）
 - 加減速限制（預設 0→255 花 300ms，`A` 指令可調）：避免突然全速／正反轉抽大電流干擾 IMU
 - IMU 偶發 I²C 錯誤直接跳過那一筆，連續 10 次失敗才當作斷線；重連後沿用原本的偏移和航向，不會在車子移動時重新校正
 - I2C 有逾時（線鬆掉不會卡死），IMU 斷線會每秒自動重試
@@ -33,13 +35,14 @@ PlatformIO + Arduino 框架。Pi 上不用裝工具鏈，編譯在 Docker 裡進
 | 元件 | 腳位 | 備註 |
 |---|---|---|
 | MPU6050 SDA / SCL | A4 / A5 | VCC 接 5V（GY-521 模組上有穩壓） |
-| TB6612 PWMA / PWMB | D6 / D7 | 左 / 右馬達。D6 = Timer0 硬體 PWM；D7 沒有硬體 PWM，用 Timer1 中斷模擬（都是 976Hz） |
+| TB6612 PWMA / PWMB | D6 / D7 | 右 / 左馬達（`MOTOR_SWAP_LR`）。D6 = Timer0 硬體 PWM；D7 沒有硬體 PWM，用 Timer1 中斷模擬（都是 976Hz） |
 | TB6612 AIN1 / AIN2 | A3 / A2 | |
 | TB6612 BIN1 / BIN2 | A1 / A0 | |
 | TB6612 STBY | 3.3V | 常駐致能，停車靠 PWM=0 |
 | TB6612 VCC | 5V | VM 接馬達電池，GND 要和 Nano 共地 |
 | 板載 LED | D13 | 校正中快閃、正常慢閃、IMU 錯誤恆亮 |
-| 保留 | D2~D5、D8~D12 | 超音波、蜂鳴器、吸塵器（D9/D10 被 Timer1 佔用，不能當 PWM） |
+| 吸塵器繼電器 IN | D8 | JQC-3FF-S-Z，實測 D8 LOW 才吸合（`VACUUM_ON_LEVEL` = LOW，改成高電位觸發要改這個值）。電池 + 接 COM，NO 接吸塵器 + |
+| 保留 | D2~D5、D9~D12 | 超音波、蜂鳴器（D9/D10 被 Timer1 佔用，不能當 PWM） |
 
 注意：Pi 每次打開序列埠（例如啟動 bridge）Nano 都會自動重開，約 1.5 秒後才開始送資料。
 
@@ -56,7 +59,9 @@ Z\n                                       航向角歸零並重新估計偏移�
 P <任意字串>\n                            原樣回傳，用來量延遲
 I\n                                       掃描 I²C（除錯用）
 R\n                                       重新開機（看開機訊息用）
-B <0|1>\n / F <0|1>\n                     蜂鳴器／吸塵器（還沒接）
+H <0|1>\n                                 測試用，故意卡死：0 = 等看門狗重開，1 = 關掉看門狗，等 DTR 重置（僅 Nano）
+F <0|1>\n                                 吸塵器關／開，回 `L vacuum on|off`；2 秒沒收到任何指令會自動關閉
+B <0|1>\n                                 蜂鳴器（還沒接）
 ```
 
 MCU → Pi（約 50Hz）：

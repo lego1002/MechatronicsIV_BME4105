@@ -35,6 +35,7 @@ def send(cmd):
 
 boot = lines(2.5)  # 打開序列埠會讓 Nano 重開
 check('boot message', 'L boot vacuum-fw' in boot)
+check('reset cause other', 'L reset cause: other' in boot)
 
 d = [l for l in lines(1.0) if l.startswith('D ')]
 check('D rate ~50Hz', 40 <= len(d) <= 55, f'{len(d)} lines/s')
@@ -52,15 +53,30 @@ send('I')
 scan = [l for l in lines(0.5) if l.startswith('L i2c scan')]
 check('i2c scan', bool(scan), scan[0] if scan else '')
 
-send('V 100 0')
-out = lines(0.6)
-check('V timeout after 300ms', 'L cmd timeout, stop' in out)
+if '--no-motor' not in sys.argv:  # 這個測試馬達會短暫轉動，車子在地上時要跳過
+    send('V 100 0')
+    out = lines(0.6)
+    check('V timeout after 300ms', 'L cmd timeout, stop' in out)
 
 send('X')
 check('unknown cmd', 'L unknown cmd: X' in lines(0.3))
 
 send('R')
 check('R reboot', 'L boot vacuum-fw' in lines(2.5))
+
+send('H 0')
+out = lines(2.5)
+check('watchdog recovers hang', 'L test hang' in out and 'L boot vacuum-fw' in out and 'L reset cause: watchdog' in out)
+
+send('H 1')
+out = lines(1.5)
+after = out[out.index('L test hang') + 1:] if 'L test hang' in out else ['no hang msg']
+check('H 1 stays hung without watchdog', not after, f'{len(after)} lines after hang')
+s.dtr = False
+time.sleep(0.1)
+s.reset_input_buffer()
+s.dtr = True
+check('DTR recovers hang', 'L boot vacuum-fw' in lines(2.5))
 
 print('ALL PASS' if not fails else f'{fails} FAILED')
 sys.exit(1 if fails else 0)

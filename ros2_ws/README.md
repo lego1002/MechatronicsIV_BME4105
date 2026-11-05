@@ -9,7 +9,8 @@ docker stop vacuum-ros2   # 關閉
 ```
 
 搭配影像串流（`../stream/start.sh -d`），瀏覽器打開 **`http://<Pi的IP>:8080`**：
-背景是攝影機畫面，上方是航向刻度帶和角度，左下搖桿（手機）、鍵盤 WASD／方向鍵控制，空白鍵停車、Z 歸零。
+背景是攝影機畫面，上方是航向刻度帶和角度，左下搖桿（手機）、鍵盤 WASD／方向鍵控制，空白鍵停車、Z 歸零，右下按鈕或 F 鍵開關吸塵器（按鈕顯示的是韌體回報狀態的相反，因為實測兩者相反）。
+STOP 只停馬達，不會關吸塵器；所有網頁都斷線時才會自動關閉。
 
 網頁有密碼（HTTP Basic Auth，帳號隨意、只檢查密碼）。密碼存在 `ros2_ws/teleop_password`（不進 git），
 第一次 `./run.sh` 會自動產生並印出來；要改就編輯這個檔再重開。檔案內容清空 = 不檢查密碼。
@@ -37,6 +38,8 @@ WebSocket 另外要帶伺服器每次啟動產生的 token（登入後塞在網�
 | `/mcu/status` | `std_msgs/UInt8` | 0 正常 / 1 IMU 校正中 / 2 IMU 錯誤 / 255 序列埠斷線 |
 | `/mcu/log` | `std_msgs/String` | 韌體的除錯訊息 |
 | `/mcu/rtt_ms` | `std_msgs/Float32` | Pi ↔ STM32 來回延遲 |
+| `/vacuum/cmd` | `std_msgs/Bool` | 吸塵器開關 |
+| `/vacuum/state` | `std_msgs/Bool` | 吸塵器實際狀態（韌體回報，latched） |
 | `/imu/zero`（服務） | `std_srvs/Trigger` | 航向角歸零 |
 
 ## 延遲

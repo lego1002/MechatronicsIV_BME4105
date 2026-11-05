@@ -7,6 +7,20 @@
 #include "config.h"
 #if defined(ARDUINO_ARCH_AVR)
 #include <avr/wdt.h>
+// 看門狗（中斷＋重開模式）：250ms 沒餵先進中斷做記號，再 250ms 還沒餵就重開，總共 500ms。
+// 這塊 Nano 的 bootloader 會清掉 MCUSR 又不傳給程式（實測任何重開都讀到同一個值），
+// 所以看門狗重開要靠這個記號判斷；.noinit 的變數重開後不會被清掉
+static const uint8_t WDT_MARK = 0xA5;
+static volatile uint8_t wdtMark __attribute__((section(".noinit")));
+ISR(WDT_vect) { wdtMark = WDT_MARK; }
+
+static void wdtStart() {
+  cli();
+  wdt_reset();
+  WDTCSR = _BV(WDCE) | _BV(WDE);
+  WDTCSR = _BV(WDIE) | _BV(WDE) | _BV(WDP2);  // 250ms
+  sei();
+}
 #endif
 
 // ---------------- MPU6050 ----------------
@@ -286,8 +300,8 @@ static void setMotor(int idx, uint8_t pwmPin, uint8_t in1, uint8_t in2, int16_t 
 
 static void applyMotors() {
   if (!motorsAllowed) return;
-  setMotor(0, PIN_PWMA, PIN_AIN1, PIN_AIN2, outLeft);
-  setMotor(1, PIN_PWMB, PIN_BIN1, PIN_BIN2, outRight);
+  setMotor(0, PIN_PWMA, PIN_AIN1, PIN_AIN2, MOTOR_SWAP_LR ? outRight : outLeft);
+  setMotor(1, PIN_PWMB, PIN_BIN1, PIN_BIN2, MOTOR_SWAP_LR ? outLeft : outRight);
 }
 
 // 急停（S、指令逾時）：不經過加減速，直接放掉（TB6612 IN1=IN2=L 是滑行，不會有煞車電流）
@@ -346,6 +360,22 @@ static void reportMotorWarning() {
   Serial.println("L motors disabled: BIN1/BIN2 shorted to I2C (IMU must be on D0/D1, keep D4/D5 unconnected)");
 }
 
+// ---------------- 吸塵器（繼電器）----------------
+static bool vacuumOn = false;
+static uint32_t lastRxMs = 0;
+
+static void setVacuum(bool on) {
+  vacuumOn = on;
+  if (PIN_VACUUM >= 0) digitalWrite(PIN_VACUUM, on ? VACUUM_ON_LEVEL : !VACUUM_ON_LEVEL);
+}
+
+static void vacuumInit() {
+  if (PIN_VACUUM < 0) return;
+  // 先設好關閉電位再切成輸出，低電位觸發的模組才不會在開機時吸合一下
+  setVacuum(false);
+  pinMode(PIN_VACUUM, OUTPUT);
+}
+
 // ---------------- 序列埠指令 ----------------
 static char line[48];
 static uint8_t lineLen = 0;
@@ -392,9 +422,24 @@ static void handleLine(char *s) {
       NVIC_SystemReset();
 #endif
       break;
+#if defined(ARDUINO_ARCH_AVR)
+    case 'H':  // 測試用：故意卡死。H 0 = 等看門狗重開；H 1 = 關掉看門狗，等 Pi 用 DTR 重置
+      if (sscanf(s + 1, "%d", &a) == 1) {
+        stopNow();
+        setVacuum(false);
+        if (a == 1) wdt_disable();
+        Serial.println(F("L test hang"));
+        Serial.flush();
+        for (;;) {}
+      }
+      break;
+#endif
     case 'I':  // 掃描 I2C 匯流排，查 IMU 接線用
       Serial.print("L i2c scan:");
       for (uint8_t addr = 1; addr < 127; addr++) {
+#if defined(ARDUINO_ARCH_AVR)
+        wdt_reset();  // 每個位址最多等 3ms 逾時，全部掃完可能接近看門狗時間
+#endif
         Wire.beginTransmission(addr);
         if (Wire.endTransmission() == 0) {
           Serial.print(" 0x");
@@ -404,8 +449,17 @@ static void handleLine(char *s) {
       Serial.println(" (MPU6050 = 0x68/0x69)");
       break;
     case 'B':
-    case 'F':
-      Serial.println("L buzzer/vacuum not wired yet");
+      Serial.println("L buzzer not wired yet");
+      break;
+    case 'F':  // F <0|1>：吸塵器開關
+      if (sscanf(s + 1, "%d", &a) == 1) {
+        if (PIN_VACUUM < 0) {
+          Serial.println("L vacuum not wired");
+          break;
+        }
+        setVacuum(a != 0);
+        Serial.println(vacuumOn ? "L vacuum on" : "L vacuum off");
+      }
       break;
     default:
       Serial.print("L unknown cmd: ");
@@ -419,7 +473,10 @@ static void readSerial() {
     if (c == '\r') continue;
     if (c == '\n') {
       line[lineLen] = 0;
-      if (lineLen) handleLine(line);
+      if (lineLen) {
+        lastRxMs = millis();
+        handleLine(line);
+      }
       lineLen = 0;
     } else if (lineLen < sizeof(line) - 1) {
       line[lineLen++] = c;
@@ -430,9 +487,12 @@ static void readSerial() {
 // ---------------- 主程式 ----------------
 void setup() {
 #if defined(ARDUINO_ARCH_AVR)
+  bool wdtReset = wdtMark == WDT_MARK;
+  wdtMark = 0;
   MCUSR = 0;
   wdt_disable();
 #endif
+  vacuumInit();
   Serial.begin(SERIAL_BAUD);
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -452,6 +512,7 @@ void setup() {
   delay(100);
   Serial.println("L boot vacuum-fw");
 #if defined(ARDUINO_ARCH_AVR)
+  Serial.println(wdtReset ? F("L reset cause: watchdog") : F("L reset cause: other"));
   Serial.print(F("L i2c idle SDA="));
   Serial.print(idleSda);
   Serial.print(F(" SCL="));
@@ -473,9 +534,19 @@ void setup() {
   imuOk = imuInit();
   imuRetryMs = millis();
   lastImuUs = micros();
+#if defined(ARDUINO_ARCH_AVR)
+  wdtStart();  // setup 跑完才開，開機流程不會被誤判成當機
+#endif
 }
 
 void loop() {
+#if defined(ARDUINO_ARCH_AVR)
+  wdt_reset();
+  if (wdtMark == WDT_MARK) {  // 卡超過 250ms 但又恢復了：不算當機，清掉記號並重新啟用中斷（硬體進中斷時會關掉）
+    wdtMark = 0;
+    wdtStart();
+  }
+#endif
   readSerial();
 
   if (imuOk) {
@@ -499,6 +570,12 @@ void loop() {
     Serial.println("L cmd timeout, stop");
   }
   rampUpdate();
+
+  // 安全機制：Pi 沒有任何指令進來就關吸塵器
+  if (vacuumOn && millis() - lastRxMs > VACUUM_TIMEOUT_MS) {
+    setVacuum(false);
+    Serial.println("L cmd timeout, vacuum off");
+  }
 
   static uint32_t lastErrReport = 0;
   if (imuErrCount && millis() - lastErrReport >= 1000) {

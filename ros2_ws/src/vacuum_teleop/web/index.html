@@ -29,6 +29,7 @@
   button { font: inherit; font-size: 16px; border: 0; border-radius: 12px; padding: 12px 18px; color: #fff;
            background: rgba(255,255,255,.18); touch-action: manipulation; }
   button:active { background: rgba(255,255,255,.35); }
+  #vac.on { background: var(--ok); color: #000; font-weight: 700; }
   #stop { background: var(--bad); font-weight: 700; font-size: 20px; padding: 18px 26px; }
   #speedBox { font-size: 13px; display: flex; align-items: center; gap: 8px; }
   #help { font-size: 11px; color: var(--dim); text-align: right; }
@@ -62,8 +63,9 @@
 <div id="joy"><div id="knob"></div></div>
 
 <div id="right">
-  <div id="help">WASD／方向鍵 移動 · 空白鍵 停車 · Z 歸零</div>
+  <div id="help">WASD／方向鍵 移動 · 空白鍵 停車 · Z 歸零 · F 吸塵器</div>
   <div id="speedBox" class="panel">速度 <input id="speed" type="range" min="0.2" max="1" step="0.05" value="0.6"> <span id="speedTxt">60%</span></div>
+  <button id="vac" aria-pressed="false">吸塵器：關</button>
   <button id="zero">航向歸零</button>
   <button id="stop">STOP</button>
 </div>
@@ -81,6 +83,7 @@ function connect() {
   ws.onopen = () => { opened = true; $('wsDot').style.background = 'var(--ok)'; $('wsTxt').textContent = '已連線'; };
   ws.onclose = () => {
     $('wsDot').style.background = 'var(--bad)'; $('wsTxt').textContent = '斷線，重連中…';
+    showVacuum(false);  // 所有人都斷線時伺服器會關吸塵器；重連後由遙測更新
     // 一次都沒連上：可能是 token 失效（伺服器重開過）。網頁拿得到就重新載入拿新的 token，拿不到（Pi 斷線）就繼續重試
     if (!opened) setTimeout(() => fetch(location.href, { cache: 'no-store' })
       .then(r => r.ok ? location.reload() : connect())
@@ -102,7 +105,7 @@ connect();
 
 // ---------- 遙測 ----------
 const ST = { 0: ['正常', 'var(--ok)'], 1: ['IMU 校正中，請勿移動', 'var(--warn)'],
-             2: ['IMU 錯誤（檢查接線）', 'var(--bad)'], 255: ['序列埠斷線', 'var(--bad)'] };
+             2: ['IMU 錯誤（檢查接線）', 'var(--bad)'], 255: ['斷線或沒有回應', 'var(--bad)'] };
 let yaw = 0;
 function showTelemetry(m) {
   yaw = m.yaw;
@@ -112,7 +115,16 @@ function showTelemetry(m) {
   const [txt, col] = ST[m.st] || ['?', 'var(--bad)'];
   $('mcuTxt').innerHTML = `Nano：<span style="color:${col}">${txt}</span>`;
   $('rttMcu').textContent = m.rtt == null ? '--' : m.rtt.toFixed(1);
+  showVacuum(m.vac);
   drawTape();
+}
+// 按鈕只顯示韌體回報的實際狀態，不是按下去就算數
+let vacOn = false;
+function showVacuum(on) {
+  vacOn = on;  // 韌體回報的狀態，按鈕切換用這個
+  $('vac').classList.toggle('on', on);
+  $('vac').setAttribute('aria-pressed', on);
+  $('vac').textContent = on ? '吸塵器：開' : '吸塵器：關';
 }
 let logTimer;
 function showLog(msg) {
@@ -168,12 +180,16 @@ setInterval(() => {
 function stop() { keys.clear(); joy = null; resetKnob(); send({ t: 'cmd', v: 0, w: 0 }); }
 $('stop').onclick = stop;
 $('zero').onclick = () => send({ t: 'zero' });
+function toggleVacuum() { send({ t: 'vacuum', on: !vacOn }); }
+// 按完放掉焦點，不然接著按空白鍵（停車）會變成再按一次這個按鈕
+$('vac').onclick = () => { toggleVacuum(); $('vac').blur(); };
 
 const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === ' ') { stop(); e.preventDefault(); }
   else if (k === 'z') send({ t: 'zero' });
+  else if (k === 'f' && !e.repeat) toggleVacuum();
   else if (MOVE_KEYS.includes(k)) { keys.add(k); e.preventDefault(); }
 });
 window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));

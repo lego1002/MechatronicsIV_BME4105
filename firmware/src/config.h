@@ -12,14 +12,18 @@
 // ---- TB6612FNG ----（洞洞板實際焊線）
 // PWMA = D6 是 Timer0 硬體 PWM（976Hz，和 millis() 共用計時器，不能改頻率）
 // PWMB = D7 沒有硬體 PWM，用 Timer1 中斷模擬（同樣 976Hz），所以 D9/D10 不能再拿來當 PWM
-#define PIN_PWMA  6    // 左馬達
-#define PIN_PWMB  7    // 右馬達
+#define PIN_PWMA  6    // 右馬達（A 通道）
+#define PIN_PWMB  7    // 左馬達（B 通道）
+#define MOTOR_SWAP_LR  1  // 1 = A 通道接右馬達、B 通道接左馬達
 #define PIN_AIN1  A3
 #define PIN_AIN2  A2
 #define PIN_BIN1  A1
 #define PIN_BIN2  A0
 #define PIN_STBY  -1   // STBY 直接接 3.3V（常駐致能，停車靠 PWM=0）
-// D2~D5、D8~D12 保留給超音波／蜂鳴器／吸塵器（A6/A7 只能類比輸入）
+// ---- 吸塵器繼電器（JQC-3FF-S-Z，馬達接 COM/NO）----
+#define PIN_VACUUM       8
+#define VACUUM_ON_LEVEL  LOW   // 實測 D8 LOW 吸塵器才會轉（2026-11-06）；如果改成高電位觸發，這裡改成 HIGH
+// D2~D5、D9~D12 保留給超音波／蜂鳴器（A6/A7 只能類比輸入）
 
 #else
 // ================= STM32 Nucleo-L432KC =================
@@ -35,6 +39,7 @@
 // ---- TB6612FNG ----
 #define PIN_PWMA  PB4   // D12  左馬達
 #define PIN_PWMB  PB5   // D11  右馬達
+#define MOTOR_SWAP_LR  0
 #define PIN_AIN2  PA3   // A2
 #define PIN_AIN1  PA4   // A3
 #define PIN_BIN2  PA5   // A4  （經 SB16/SB18 和 D4 短路，D4 保持空接）
@@ -43,9 +48,13 @@
 #define PIN_STBY  -1   // -1 = 不使用
 
 #define MOTOR_PWM_HZ     20000  // 20kHz，聽不到馬達嘯叫
+
+#define PIN_VACUUM       -1     // Nucleo 沒接吸塵器
+#define VACUUM_ON_LEVEL  HIGH
 #endif
 
 #define CMD_TIMEOUT_MS   300    // 超過這麼久沒收到指令就停車
+#define VACUUM_TIMEOUT_MS 2000  // 超過這麼久沒收到任何指令就關吸塵器（Pi 當掉或 USB 斷線）
 #define MOTOR_RAMP_MS    300    // 加減速限制：PWM 從 0 到 255 至少花這麼久（ms），0 = 不限制。可用 A 指令即時調整
 #define IMU_MAX_ERRORS   10     // 連續讀取失敗這麼多次才當作 IMU 斷線（偶發的 I2C 雜訊直接跳過那一筆）
 
