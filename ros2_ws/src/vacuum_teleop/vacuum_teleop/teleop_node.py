@@ -8,6 +8,7 @@
 WebSocket 要帶 ?k=<token> 才接受，所以沒密碼的人不能直接連 /ws 控制馬達。密碼留空 = 不檢查。
 
 瀏覽器 -> 伺服器  {"t":"cmd","v":-1~1,"w":-1~1}   {"t":"zero"}   {"t":"vacuum","on":bool}   {"t":"ping","id":n}
+                  {"t":"accel","ms":n}（加速時間，PWM 0→255 的毫秒數）
 伺服器 -> 瀏覽器  {"t":"tel",...} 25Hz           {"t":"pong","id":n}   {"t":"log","msg":...}
 """
 import asyncio
@@ -27,7 +28,7 @@ from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
-from std_msgs.msg import Bool, Float32, String, UInt8
+from std_msgs.msg import Bool, Float32, String, UInt8, UInt16
 from std_srvs.srv import Trigger
 
 
@@ -38,7 +39,7 @@ class Teleop(Node):
         self.cmd_timeout = self.declare_parameter('cmd_timeout', 0.3).value
         self.password = self.declare_parameter('password', os.environ.get('TELEOP_PASSWORD', '')).value
 
-        self.state = {'yaw': 0.0, 'rate': 0.0, 'st': 255, 'rtt': None, 'vac': False}
+        self.state = {'yaw': 0.0, 'rate': 0.0, 'st': 255, 'rtt': None, 'vac': False, 'acc': None}
         self.logs = []
         self.cmd = (0.0, 0.0)
         self.cmd_time = 0.0
@@ -50,6 +51,8 @@ class Teleop(Node):
         self.create_subscription(String, 'mcu/log', lambda m: self.logs.append(m.data), 10)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(Bool, 'vacuum/state', lambda m: self.state.update(vac=m.data), latched)
+        self.create_subscription(UInt16, 'motor/accel_state', lambda m: self.state.update(acc=m.data), latched)
+        self.pub_accel = self.create_publisher(UInt16, 'motor/accel_ms', 10)
         self.pub_cmd = self.create_publisher(Twist, 'cmd_vel', 10)
         self.pub_vacuum = self.create_publisher(Bool, 'vacuum/cmd', 10)
         self.zero_client = self.create_client(Trigger, 'imu/zero')
@@ -69,6 +72,9 @@ class Teleop(Node):
 
     def set_vacuum(self, on):
         self.pub_vacuum.publish(Bool(data=on))
+
+    def set_accel(self, ms):
+        self.pub_accel.publish(UInt16(data=max(0, min(5000, int(ms)))))
 
     def zero(self):
         if self.zero_client.service_is_ready():
@@ -120,6 +126,8 @@ def serve(node):
                     node.zero()
                 elif t == 'vacuum':
                     node.set_vacuum(m.get('on') is True)
+                elif t == 'accel' and isinstance(m.get('ms'), (int, float)):
+                    node.set_accel(m['ms'])
         finally:
             clients.discard(ws)
             if not clients:  # 沒有人在看了：停車、關吸塵器

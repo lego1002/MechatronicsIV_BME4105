@@ -20,7 +20,9 @@ C310 (YUYV 640×480) → v4l2h264enc (~1 Mbps) → RTP/UDP :5004 → MediaMTX �
 | 瀏覽器（主要） | `http://<Pi的IP>:8889/cam` |
 | VLC（備援） | `rtsp://<Pi的IP>:8554/cam` |
 
-`<Pi的IP>` 可以填 Tailscale IP（`tailscale ip -4`）或區網 IP（`hostname -I`）。
+`<Pi的IP>` 請填**區網 IP**（`./stream/lanip.sh` 或 `./menu.sh` 會顯示），電腦連同一個 Wi-Fi。
+**不要用 Tailscale IP（100.x）**：走 Tailscale 影像會被限速、卡頓。`mediamtx.yml` 也已經把 `tailscale0` 排除在 WebRTC ICE 候選之外，
+所以不在同一個 Wi-Fi 時影像會連不上（ssh 照樣可以走 Tailscale）。
 
 ## 調整參數
 

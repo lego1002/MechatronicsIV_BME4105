@@ -4,12 +4,24 @@ ROS2 Humble 跑在 Docker 裡（`docker/ros2/Dockerfile`），Pi 上不用裝 RO
 
 ```bash
 ./run.sh          # 編譯 + 啟動 bridge 和網頁遙控
+./run.sh -d       # 同上但在背景執行（log：docker logs -f vacuum-ros2）；../menu.sh 用的就是這個
 ./run.sh shell    # 進容器下 ros2 指令，例如 ros2 topic echo /imu/yaw
 docker stop vacuum-ros2   # 關閉
 ```
 
 搭配影像串流（`../stream/start.sh -d`），瀏覽器打開 **`http://<Pi的IP>:8080`**：
-背景是攝影機畫面，上方是航向刻度帶和角度，左下搖桿（手機）、鍵盤 WASD／方向鍵控制，空白鍵停車、Z 歸零，右下按鈕或 F 鍵開關吸塵器（按鈕顯示的是韌體回報狀態的相反，因為實測兩者相反）。
+背景是攝影機畫面，上方是航向刻度帶和角度，左下是手機用的搖桿，右下按鈕或 F 鍵開關吸塵器。
+
+鍵盤配置同 `teleop_twist_keyboard`（但要按住才會動，放開就停）：
+
+```
+移動    U I O        加／減速（每次 5%）
+        J K L        Q / Z  線速度和角速度一起
+        M , .        W / X  只調線速度
+                     E / C  只調角速度
+```
+
+方向鍵也可以移動，K 或空白鍵停車，0 航向歸零，F 吸塵器。線速度、角速度分開調（預設 40%／25%），手機用面板上的 −／+ 按鈕。「加速」是起步從 0 到全速的時間（預設 0.8s，每次 ±0.1s，存在 Pi 上，Nano 重開會自動補設定）。
 STOP 只停馬達，不會關吸塵器；所有網頁都斷線時才會自動關閉。
 
 網頁有密碼（HTTP Basic Auth，帳號隨意、只檢查密碼）。密碼存在 `ros2_ws/teleop_password`（不進 git），
@@ -40,6 +52,8 @@ WebSocket 另外要帶伺服器每次啟動產生的 token（登入後塞在網�
 | `/mcu/rtt_ms` | `std_msgs/Float32` | Pi ↔ STM32 來回延遲 |
 | `/vacuum/cmd` | `std_msgs/Bool` | 吸塵器開關 |
 | `/vacuum/state` | `std_msgs/Bool` | 吸塵器實際狀態（韌體回報，latched） |
+| `/motor/accel_ms` | `std_msgs/UInt16` | 設定加速時間（PWM 0→255 的 ms，0 = 不限制），bridge 轉成 `A` 指令 |
+| `/motor/accel_state` | `std_msgs/UInt16` | 韌體回報的實際加速時間（latched） |
 | `/imu/zero`（服務） | `std_srvs/Trigger` | 航向角歸零 |
 
 ## 延遲

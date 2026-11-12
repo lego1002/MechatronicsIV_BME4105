@@ -32,3 +32,4 @@ Thumbs.db
 
 # PlatformIO 編譯產物
 firmware/.pio/
+logs/

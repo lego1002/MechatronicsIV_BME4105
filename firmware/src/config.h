@@ -17,8 +17,8 @@
 #define MOTOR_SWAP_LR  1  // 1 = A 通道接右馬達、B 通道接左馬達
 #define PIN_AIN1  A3
 #define PIN_AIN2  A2
-#define PIN_BIN1  A1
-#define PIN_BIN2  A0
+#define PIN_BIN1  A0   // 2026-11-12 左輪方向相反，BIN1/BIN2 對調（原本 A1/A0）
+#define PIN_BIN2  A1
 #define PIN_STBY  -1   // STBY 直接接 3.3V（常駐致能，停車靠 PWM=0）
 // ---- 吸塵器繼電器（JQC-3FF-S-Z，馬達接 COM/NO）----
 #define PIN_VACUUM       8
@@ -55,8 +55,20 @@
 
 #define CMD_TIMEOUT_MS   300    // 超過這麼久沒收到指令就停車
 #define VACUUM_TIMEOUT_MS 2000  // 超過這麼久沒收到任何指令就關吸塵器（Pi 當掉或 USB 斷線）
-#define MOTOR_RAMP_MS    300    // 加減速限制：PWM 從 0 到 255 至少花這麼久（ms），0 = 不限制。可用 A 指令即時調整
+// 梯形加減速：PWM 從 0 到 255 至少花這麼久（ms），0 = 不限制。可用 A <加速> <減速> 即時調整（網頁也能調）
+#define MOTOR_ACCEL_MS   800    // 加速（離開 0）：慢一點，起步電流小、電池電壓不會被拉垮
+#define MOTOR_DECEL_MS   300    // 減速（往 0）／反轉時先減到 0：快一點，放開按鍵就停
 #define IMU_MAX_ERRORS   10     // 連續讀取失敗這麼多次才當作 IMU 斷線（偶發的 I2C 雜訊直接跳過那一筆）
+
+// ---- 直線航向保持（IMU 矯正左右輪速度差）----
+// 直走（|角速度| <= HOLD_ANG_DEADBAND 且線速度不為 0）時鎖住當下航向，用 PID 修正角速度。
+// 單位：輸出是 PWM（0~255），誤差是度。可用 G 指令即時調整（G <kp*100> <ki*100> <kd*100>，G 0 0 0 = 關閉）
+#define HOLD_KP           5.0f   // PWM / 度
+#define HOLD_KI           3.0f   // PWM / (度·秒)，消除兩顆馬達固定的速度差
+#define HOLD_KD           0.5f   // PWM / (度/秒)，阻尼
+#define HOLD_MAX_CORR     80     // 修正量上限（PWM）
+#define HOLD_ANG_DEADBAND 10     // 角速度指令小於這個值當作直走（搖桿不會剛好回到 0）
+#define HOLD_MAX_ERR_DEG  45     // 誤差超過這麼多度就放棄（被撞歪，或 IMU_YAW_SIGN 方向設反），直到停車再重來
 
 // ---- 其他 ----
 #define SERIAL_BAUD      115200

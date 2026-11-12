@@ -36,6 +36,8 @@
 ```bash
 git clone <repo網址> vacuum && cd vacuum
 
+./menu.sh                 # 服務選單：看哪些服務開著，按 1/2 開關串流和 ROS2（a 全開、x 全關）
+
 # 影像串流（第一次要先下載 MediaMTX）
 ./stream/install_mediamtx.sh
 ./stream/start.sh -d      # 瀏覽器打開 http://<Pi的IP>:8889/cam

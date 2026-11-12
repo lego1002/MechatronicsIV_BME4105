@@ -2,6 +2,8 @@
 # USB 攝影機 -> Pi 4 硬體 H.264 編碼 -> RTP/UDP -> MediaMTX (127.0.0.1:5004)
 # 由 MediaMTX 的 runOnInit 啟動；本腳本結束後 MediaMTX 會自動重新啟動它。
 # 可用環境變數調整：W H FPS BITRATE(bps) GOP(幾幀一個關鍵幀) DEV
+# 預設用 USB ID 找攝影機：斷電重新列舉後可能變成 /dev/video2，by-id 路徑不變
+DEV=${DEV:-$(ls /dev/v4l/by-id/usb-046d_081b_*-video-index0 2>/dev/null | head -1)}
 DEV=${DEV:-/dev/video0}
 W=${W:-640}; H=${H:-480}; FPS=${FPS:-30}
 BITRATE=${BITRATE:-1000000}

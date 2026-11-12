@@ -31,8 +31,13 @@
   button:active { background: rgba(255,255,255,.35); }
   #vac.on { background: var(--ok); color: #000; font-weight: 700; }
   #stop { background: var(--bad); font-weight: 700; font-size: 20px; padding: 18px 26px; }
-  #speedBox { font-size: 13px; display: flex; align-items: center; gap: 8px; }
-  #help { font-size: 11px; color: var(--dim); text-align: right; }
+  #right .panel { position: static; }  /* .panel 預設 fixed 會脫離排版，蓋住右下的按鈕 */
+  .spd { font-size: 14px; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; }
+  .spd b { min-width: 4ch; text-align: right; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .spd button { padding: 6px 14px; font-size: 18px; }
+  #help { font-size: 12px; line-height: 1.6; text-align: right; }
+  #help kbd { font: inherit; font-weight: 700; color: var(--ok); }
+  @media (hover: none) { #help { display: none; } }
   @media (max-width: 520px) { #stats { top: auto; bottom: 200px; } }
 </style>
 </head>
@@ -63,8 +68,15 @@
 <div id="joy"><div id="knob"></div></div>
 
 <div id="right">
-  <div id="help">WASD／方向鍵 移動 · 空白鍵 停車 · Z 歸零 · F 吸塵器</div>
-  <div id="speedBox" class="panel">速度 <input id="speed" type="range" min="0.2" max="1" step="0.05" value="0.6"> <span id="speedTxt">60%</span></div>
+  <div id="help" class="panel">
+    <div>移動（按住）<kbd>U I O</kbd> / <kbd>J L</kbd> / <kbd>M , .</kbd> 或方向鍵</div>
+    <div>停車 <kbd>K</kbd> 或空白鍵</div>
+    <div>加／減速 全部 <kbd>Q</kbd>/<kbd>Z</kbd> · 線速度 <kbd>W</kbd>/<kbd>X</kbd> · 角速度 <kbd>E</kbd>/<kbd>C</kbd></div>
+    <div>歸零 <kbd>0</kbd> · 吸塵器 <kbd>F</kbd></div>
+  </div>
+  <div class="spd panel">線速度 <button data-lin="-5" aria-label="線速度減少">−</button><b id="linTxt"></b><button data-lin="5" aria-label="線速度增加">+</button></div>
+  <div class="spd panel">角速度 <button data-ang="-5" aria-label="角速度減少">−</button><b id="angTxt"></b><button data-ang="5" aria-label="角速度增加">+</button></div>
+  <div class="spd panel" title="起步從 0 加到全速要花的時間，越長越柔、越不會拉垮電池">加速 <button data-acc="-100" aria-label="加速時間減少">−</button><b id="accTxt">--</b><button data-acc="100" aria-label="加速時間增加">+</button></div>
   <button id="vac" aria-pressed="false">吸塵器：關</button>
   <button id="zero">航向歸零</button>
   <button id="stop">STOP</button>
@@ -74,6 +86,14 @@
 const $ = id => document.getElementById(id);
 const host = location.hostname;
 $('video').src = `http://${host}:8889/cam/?controls=false&muted=true&autoplay=true&playsinline=true`;
+// 用 Tailscale（100.64.0.0/10）開網頁：影像會被限速，而且 MediaMTX 已排除 tailscale0，影像很可能連不上
+if (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host)) {
+  const w = document.createElement('div');
+  w.className = 'panel';
+  w.style.cssText = 'top:120px;left:50%;transform:translateX(-50%);background:var(--bad);font-weight:700;text-align:center;z-index:9';
+  w.textContent = '⚠ 你正在用 Tailscale 網址，影像會卡或看不到。請連同一個 Wi-Fi，改用 Pi 選單（./menu.sh）上的 192.168.x.x 網址';
+  document.body.appendChild(w);
+}
 
 // ---------- WebSocket ----------
 let ws = null, pingSent = {}, pingId = 0;
@@ -116,6 +136,8 @@ function showTelemetry(m) {
   $('mcuTxt').innerHTML = `Nano：<span style="color:${col}">${txt}</span>`;
   $('rttMcu').textContent = m.rtt == null ? '--' : m.rtt.toFixed(1);
   showVacuum(m.vac);
+  accMs = m.acc;
+  $('accTxt').textContent = m.acc == null ? '--' : (m.acc / 1000).toFixed(1) + 's';
   drawTape();
 }
 // 按鈕只顯示韌體回報的實際狀態，不是按下去就算數
@@ -156,17 +178,31 @@ drawTape();
 // ---------- 控制 ----------
 const keys = new Set();
 let joy = null;  // {v, w}，-1~1
-const speed = () => parseFloat($('speed').value);
-$('speed').oninput = () => $('speedTxt').textContent = Math.round(speed() * 100) + '%';
+// 線速度、角速度分開調（滿速的百分比）
+let linPct = 40, angPct = 25;
+const clampPct = p => Math.max(5, Math.min(100, p));
+function adjustSpeed(dLin, dAng) {
+  linPct = clampPct(linPct + dLin); angPct = clampPct(angPct + dAng);
+  $('linTxt').textContent = linPct + '%'; $('angTxt').textContent = angPct + '%';
+}
+adjustSpeed(0, 0);
+
+// 按鍵配置同 teleop_twist_keyboard，[線, 角]，角速度正 = 左轉。
+// 用 e.code（實體按鍵）判斷，開著注音或大寫鎖定也能用，放開時也不會對不上而卡鍵
+const MOVE = { KeyU: [1, 1], KeyI: [1, 0], KeyO: [1, -1], KeyJ: [0, 1], KeyL: [0, -1],
+               KeyM: [-1, -1], Comma: [-1, 0], Period: [-1, 1],
+               ArrowUp: [1, 0], ArrowDown: [-1, 0], ArrowLeft: [0, 1], ArrowRight: [0, -1] };
+const SPEED = { KeyQ: [5, 5], KeyZ: [-5, -5], KeyW: [5, 0], KeyX: [-5, 0], KeyE: [0, 5], KeyC: [0, -5] };
+const clamp1 = x => Math.max(-1, Math.min(1, x));
 
 function currentCmd() {
-  if (joy) return { v: joy.v * speed(), w: joy.w * speed() };
   let v = 0, w = 0;
-  if (keys.has('w') || keys.has('arrowup')) v += 1;
-  if (keys.has('s') || keys.has('arrowdown')) v -= 1;
-  if (keys.has('a') || keys.has('arrowleft')) w += 1;
-  if (keys.has('d') || keys.has('arrowright')) w -= 1;
-  return { v: v * speed(), w: w * speed() * 0.7 };
+  if (joy) ({ v, w } = joy);
+  else {
+    for (const k of keys) { v += MOVE[k][0]; w += MOVE[k][1]; }
+    v = clamp1(v); w = clamp1(w);
+  }
+  return { v: v * linPct / 100, w: w * angPct / 100 };
 }
 // 20Hz 持續送指令（伺服器 0.3 秒沒收到就自動停車）
 let idleSent = 0;
@@ -181,18 +217,28 @@ function stop() { keys.clear(); joy = null; resetKnob(); send({ t: 'cmd', v: 0, 
 $('stop').onclick = stop;
 $('zero').onclick = () => send({ t: 'zero' });
 function toggleVacuum() { send({ t: 'vacuum', on: !vacOn }); }
+$('vac').onclick = toggleVacuum;
+for (const b of document.querySelectorAll('[data-lin]')) b.onclick = () => adjustSpeed(+b.dataset.lin, 0);
+for (const b of document.querySelectorAll('[data-ang]')) b.onclick = () => adjustSpeed(0, +b.dataset.ang);
+// 加速時間：存在 Pi（bridge）上，顯示的是韌體回報的實際值，所有人看到的都一樣
+let accMs = null;
+for (const b of document.querySelectorAll('[data-acc]')) b.onclick = () => {
+  if (accMs != null) send({ t: 'accel', ms: Math.max(0, Math.min(2000, accMs + +b.dataset.acc)) });
+};
 // 按完放掉焦點，不然接著按空白鍵（停車）會變成再按一次這個按鈕
-$('vac').onclick = () => { toggleVacuum(); $('vac').blur(); };
+document.addEventListener('click', e => { const b = e.target.closest('button'); if (b) b.blur(); });
 
-const MOVE_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
 window.addEventListener('keydown', e => {
-  const k = e.key.toLowerCase();
-  if (k === ' ') { stop(); e.preventDefault(); }
-  else if (k === 'z') send({ t: 'zero' });
-  else if (k === 'f' && !e.repeat) toggleVacuum();
-  else if (MOVE_KEYS.includes(k)) { keys.add(k); e.preventDefault(); }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;  // 不要吃掉 Ctrl+R、Ctrl+C 這類瀏覽器快捷鍵
+  const c = e.code;
+  if (c === 'Space' || c === 'KeyK') { stop(); e.preventDefault(); }
+  else if (c === 'Digit0' || c === 'Numpad0') { if (!e.repeat) send({ t: 'zero' }); }
+  else if (c === 'KeyF') { if (!e.repeat) toggleVacuum(); }
+  // 忽略自動重複：不然按住移動鍵時按停車，下一次重複又會讓車子動起來
+  else if (MOVE[c]) { if (!e.repeat) keys.add(c); e.preventDefault(); }
+  else if (SPEED[c]) { adjustSpeed(...SPEED[c]); e.preventDefault(); }
 });
-window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+window.addEventListener('keyup', e => keys.delete(e.code));
 window.addEventListener('blur', stop);
 document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
 
@@ -206,7 +252,7 @@ function onJoy(e) {
   if (d > R) { dx *= R / d; dy *= R / d; }
   knob.style.transform = `translate(${dx}px, ${dy}px)`;
   const dead = v => Math.abs(v) < 0.08 ? 0 : v;
-  joy = { v: dead(-dy / R), w: dead(-dx / R) * 0.7 };
+  joy = { v: dead(-dy / R), w: dead(-dx / R) };
 }
 pad.addEventListener('pointerdown', e => { pad.setPointerCapture(e.pointerId); onJoy(e); });
 pad.addEventListener('pointermove', e => { if (pad.hasPointerCapture(e.pointerId)) onJoy(e); });

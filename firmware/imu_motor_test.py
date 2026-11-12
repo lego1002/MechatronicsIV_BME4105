@@ -107,7 +107,7 @@ for ramp in (0, 300):
           f'I2C 錯誤 {total["errs"]}，IMU 斷線 {total["lost"]}')
     time.sleep(1)
 
-send('A 300')
+send('A 800 300')  # 回到韌體預設（加速 800、減速 300）
 print('\n===== 結論 =====')
 for ramp, t in results.items():
     print(f'A {ramp:<4} 漂移 {t["drift"]:7.2f}°  最大|rate| {t["maxabs"]:6.2f}°/s  I2C錯誤 {t["errs"]}  斷線 {t["lost"]}')

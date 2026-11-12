@@ -26,7 +26,7 @@ plus a microcontroller that drives the motors and reads sensors. Details are in 
 - Camera: Logitech C310 on the Pi.
 - **Nano wiring confirmed by the user (2026-10-17, soldered perfboard)**, see `firmware/src/config.h`:
   PWMA = D6 = right motor, PWMB = D7 = left motor (`MOTOR_SWAP_LR`, swapped 2026-11-05) (D6: Timer0 HW PWM, 976Hz; D7 **no HW PWM** → Timer1 ISR soft PWM, 976Hz; D9/D10 can't be PWM now),
-  AIN1/AIN2 = A3/A2, BIN1/BIN2 = A1/A0, STBY = 3.3V, MPU6050 SDA/SCL = A4/A5, vacuum relay (JQC-3FF-S-Z, on NO, `VACUUM_ON_LEVEL` LOW) = D8. 2026-11-06: closing the page turned the vacuum on, proving D8 LOW = running, so the level is now LOW and the label inversion in `showVacuum` is gone. Vacuum log lines from before this fix are inverted. Free: D2–D5, D9–D12.
+  AIN1/AIN2 = A3/A2, BIN1/BIN2 = A0/A1 (swapped 2026-11-12, left wheel was reversed), STBY = 3.3V, MPU6050 SDA/SCL = A4/A5, vacuum relay (JQC-3FF-S-Z, on NO, `VACUUM_ON_LEVEL` LOW) = D8. 2026-11-06: closing the page turned the vacuum on, proving D8 LOW = running, so the level is now LOW and the label inversion in `showVacuum` is gone. Vacuum log lines from before this fix are inverted. Free: D2–D5, D9–D12.
 - 2026-10-17: IMU still not detected: boot log `L i2c idle SDA=0 SCL=0 ext-pullup=NO` means the GY-521 isn't powered or
   isn't reaching A4/A5. Motors not yet observed spinning (needs the user watching, wheels lifted).
 - 2026-10-17 `imu_motor_test.sh` (motors on the bench, not on the chassis): ramp off → gyro spikes up to 14°/s on abrupt
@@ -50,21 +50,35 @@ plus a microcontroller that drives the motors and reads sensors. Details are in 
   right forward (spin left) → 2s left forward + right back (spin right) → 1.5s stop. A wheel spinning the wrong
   way = swap that motor's wires (or its xIN1/xIN2 in `config.h`). A wheel not spinning = check VM, STBY, PWM pin.
 - Gotcha: avrdude leaves the tty with `-hupcl`, so opening the port may NOT reset the Nano. `test_serial.py` pulses DTR itself.
+- **2026-11-12: camera drops / Pi resets when motors spin = power.** Kernel log that evening: 5× `Undervoltage detected`,
+  C310 `USB disconnect` + enumerate errors -71/-32 (camera gone ~5 min), and 4 boots ending abruptly (hard resets).
+  The batteries were low (being charged). Software can't fix this. The Pi needs its own 5V ≥3A buck/supply that motor
+  current surges can't pull down (or a separate power bank), with a big cap on VM. `cam.sh` now opens the camera by
+  `/dev/v4l/by-id` so it recovers if it re-enumerates as another `/dev/videoN`. Read undervoltage via the
+  `rpi_volt` hwmon `in0_lcrit_alarm`, not `get_throttled` (deprecated, dumps a WARNING trace into dmesg on this kernel).
+- IMU mounting: only gyro-z is used, and yaw rate is the same anywhere on a rigid body, so an off-center IMU is fine.
+  It must be level and rigidly mounted.
 
 ## Components and status
 
 | Area | Status | Notes |
 |---|---|---|
-| `stream/` | ✅ works | C310 → Pi HW H.264 (v4l2h264enc) → MediaMTX → WebRTC `:8889/cam`, RTSP `:8554/cam`. `./stream/start.sh -d` / `stop.sh` |
+| `stream/` | ✅ works | C310 → Pi HW H.264 (v4l2h264enc) → MediaMTX → WebRTC `:8889/cam`, RTSP `:8554/cam`. `./stream/start.sh -d` / `stop.sh`. **LAN only**: `webrtcIPsFromInterfacesExcludeList: [tailscale0, docker0]` (over Tailscale the video was throttled); menu/start.sh print the Wi-Fi IP from `stream/lanip.sh` |
 | `firmware/` | 🚧 | IMU yaw ✅ (validated on Nucleo), serial protocol ✅ (tested on Nano), motors untested on Nano, vacuum relay `F 0|1` on D8 written but untested on hardware, ultrasonic/buzzer not implemented (`D` reports `-1 -1`; `B` cmd is a stub) |
 | `ros2_ws/vacuum_bridge` | ✅ | serial ↔ ROS topics; `/cmd_vel` −1..1 scaled to ±255 `V` cmds at 20Hz; ping every 1s → `/mcu/rtt_ms`; `/vacuum/cmd` → `F`, firmware's `L vacuum on/off` → `/vacuum/state` |
-| `ros2_ws/vacuum_teleop` | ✅ | web page + WebSocket on `:8080` (camera background, yaw tape, joystick/WASD, space = stop, Z = zero, button/F = vacuum relay) |
+| `ros2_ws/vacuum_teleop` | ✅ | web page + WebSocket on `:8080` (camera background, yaw tape, joystick, `teleop_twist_keyboard` key layout held to move, Q/Z W/X E/C speed, K or space = stop, 0 = zero, button/F = vacuum relay) |
 | `ros2_ws/vacuum_bringup` | ✅ | `teleop.launch.py` |
 | localization / mission / vision | ❌ not started | planned packages `vacuum_localization`, `vacuum_mission`, `vacuum_vision` (red circle, 20cm) |
 
 ## Commands
 
 ```bash
+./menu.sh                      # service menu: shows stream/ROS2/camera/Nano/undervoltage status, 1/2 toggle, a/x all on/off
+./menu.sh status               # print status once (non-interactive, fine for agents)
+./health.sh report             # boots in last 24h: runtime, abrupt power loss?, undervoltage/camera-drop counts
+tail logs/health.log           # health monitor events (menu.sh auto-starts `health.sh -d`). At session start, check
+                               # logs/health.log for "突然斷電" and tell the user (they asked to be told about power loss)
+
 # Firmware (in firmware/)
 ./build.sh                     # compile Nano (default env)
 ./build.sh -e nucleo_l432kc    # compile old Nucleo
@@ -76,7 +90,7 @@ plus a microcontroller that drives the motors and reads sensors. Details are in 
 ./test.sh [--no-motor]         # automated protocol test (test_serial.py; plain run spins motors, lift wheels): boot msg, 50Hz D, ping, I2C scan, 300ms timeout, unknown cmd, R reboot
 
 # ROS2 (in ros2_ws/)
-./run.sh                       # colcon build + launch bridge + web teleop; maps Nano/Nucleo serial to /dev/ttyACM0 in container
+./run.sh [-d]                  # (-d = detached) colcon build + launch bridge + web teleop; maps Nano/Nucleo serial to /dev/ttyACM0 in container
 ./run.sh shell                 # shell in the (running) container
 docker stop vacuum-ros2
 ```
@@ -92,7 +106,7 @@ The agent can build, flash and test the firmware on its own via these scripts. L
   - STM32: solder-bridge short check (SB16/SB18 tie A4/A5 to D4/D5), TIM2 soft-PWM for pins without timers, `NVIC_SystemReset`.
 - IMU: MPU6050 gyro z @200Hz, ±500dps, DLPF 42Hz; 2s still calibration at boot / on `Z`; slow bias tracking when motors
   idle >1s; auto re-init every 1s if IMU lost.
-- Motor ramp: `V` sets a target, output slews at 255/`MOTOR_RAMP_MS` (300ms, runtime `A <ms>`, 0 = off). `S`/timeout stop instantly (coast).
+- Motor ramp (trapezoid): `V` sets a target; output slews away from 0 at 255/`MOTOR_ACCEL_MS` (800ms) and toward 0 at 255/`MOTOR_DECEL_MS` (300ms); reversal decels to 0 first. Output is 1/256-PWM fixed point so slow ramps aren't lost. Runtime `A <accel> [decel]` (one arg = both, 0 = off) → `L ramp accel N decel M ms`. Bridge param `accel_ms`/`decel_ms`, `/motor/accel_ms` sets accel (web page −/+), resent after Nano reboot; `/motor/accel_state` latched. `S`/timeout stop instantly (coast).
 - IMU errors: single I²C read failures are skipped (`L imu read errors N` per second); lost only after 10 in a row; re-init keeps bias/yaw (calibrates only once, or on `Z`).
 - Safety: 300ms with no `V` cmd → stop. Nano watchdog 500ms (`H 0|1` = test hang, boot reports `L reset cause:`); bridge pulses DTR after 3s of silence. Mixing: left = lin − ang, right = lin + ang (ang + = turn left).
 - Serial protocol (115200): Pi→MCU `V lin ang`, `S`, `A ms`, `Z`, `P text`, `I`, `R`, `B/F 0|1`;

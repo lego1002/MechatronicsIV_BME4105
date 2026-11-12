@@ -21,6 +21,9 @@ webrtcLocalUDPAddress: :8189
 webrtcLocalTCPAddress: :8189
 # 比賽現場可能沒有網際網路：不要依賴 STUN
 webrtcICEServers2: []
+# 不把 Tailscale / docker 的 IP 給瀏覽器當 ICE 候選：否則瀏覽器常會選 Tailscale 那條路，影像被限速卡頓。
+# 電腦請連同一個 Wi-Fi，用 ./menu.sh 顯示的區網網址（不在同一個 Wi-Fi 時影像會連不上）
+webrtcIPsFromInterfacesExcludeList: [tailscale0, docker0]
 
 paths:
   cam:

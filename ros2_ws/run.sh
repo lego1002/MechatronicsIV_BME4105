@@ -1,6 +1,7 @@
 #!/bin/bash
 # 在 Docker 裡編譯並執行 ROS2（Pi 上不用裝 ROS2）
 #   ./run.sh          編譯 + 啟動 bridge 和網頁遙控（http://<Pi的IP>:8080）
+#   ./run.sh -d       同上但在背景執行（log：docker logs -f vacuum-ros2，關閉：docker stop vacuum-ros2）
 #   ./run.sh shell    進入容器的 bash（可以用 ros2 topic echo /imu/yaw 等指令）
 set -e
 cd "$(dirname "$0")"
@@ -21,6 +22,7 @@ fi
 export TELEOP_PASSWORD=$(tr -d '\n' < teleop_password)
 
 TTY=(-i); [ -t 0 ] && TTY=(-it)
+[ "$1" = "-d" ] && TTY=(-d)
 RUN=(docker run --rm "${TTY[@]}" --net=host --ipc=host --name vacuum-ros2
      --user "$(id -u):$(id -g)" -e HOME=/tmp -e ROS_LOG_DIR=/ws/log -e TELEOP_PASSWORD
      -v "$PWD":/ws "${DEV_ARGS[@]}" $IMG)
@@ -31,6 +33,9 @@ if [ "$1" = "shell" ]; then
     exec docker exec "${TTY[@]}" --user "$(id -u):$(id -g)" -e HOME=/tmp vacuum-ros2 bash -c "source /opt/ros/humble/setup.bash && source install/setup.bash && exec bash"
   fi
   exec "${RUN[@]}" bash -c "$BUILD && exec bash"
+fi
+if docker ps -q -f name=^vacuum-ros2$ | grep -q .; then
+  echo "vacuum-ros2 已經在跑了（要重開請先 docker stop vacuum-ros2）"; exit 1
 fi
 echo "網頁遙控：http://$(tailscale ip -4 2>/dev/null || hostname -I | cut -d' ' -f1):8080（密碼：$TELEOP_PASSWORD，帳號隨意）"
 exec "${RUN[@]}" bash -c "$BUILD && ros2 launch vacuum_bringup teleop.launch.py"

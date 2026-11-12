@@ -152,12 +152,66 @@ static void imuUpdate() {
 static bool motorsAllowed = true;
 static int16_t cmdLeft = 0, cmdRight = 0;   // 目標
 static int16_t outLeft = 0, outRight = 0;   // 實際輸出（經過加減速限制）
-static uint16_t rampMs = MOTOR_RAMP_MS;
+static int32_t outLeftQ = 0, outRightQ = 0; // 同上，單位 1/256 PWM（慢加速時每圈的步進不到 1）
+static uint16_t accelMs = MOTOR_ACCEL_MS, decelMs = MOTOR_DECEL_MS;
 static uint32_t lastRampUs = 0;
 static uint32_t lastCmdMs = 0;
 static uint32_t lastNonzeroMs = 0;
 
 static bool motorsIdle() { return millis() - lastNonzeroMs > 1000; }
+
+// ---------------- 直線航向保持 ----------------
+// V 指令只記下 cmdLin/cmdAng，由 mixUpdate() 換算成左右輪目標。
+// 直走時用陀螺儀航向做 PID，修正兩顆馬達速度不一樣造成的偏移。
+static int16_t cmdLin = 0, cmdAng = 0;
+static float holdKp = HOLD_KP, holdKi = HOLD_KI, holdKd = HOLD_KD;
+static bool holdActive = false;   // 正在鎖航向
+static bool holdGaveUp = false;   // 誤差太大放棄，停車（線速度 = 0）後才會再啟用
+static float holdYaw = 0, holdI = 0, holdCorr = 0;
+static uint32_t lastHoldUs = 0;
+
+static void mixUpdate() {
+  bool enabled = holdKp > 0 || holdKi > 0 || holdKd > 0;
+  if (cmdLin == 0) holdGaveUp = false;
+  bool want = enabled && !holdGaveUp && imuOk && !calibrating && cmdLin != 0 &&
+              abs(cmdAng) <= HOLD_ANG_DEADBAND;
+  if (!want) {
+    holdActive = false;
+  } else {
+    uint32_t now = micros();
+    if (!holdActive) {  // 剛開始直走：鎖住當下的航向
+      holdActive = true;
+      holdYaw = yawDeg;
+      holdI = 0;
+      holdCorr = 0;
+      lastHoldUs = now;
+    } else if (now - lastHoldUs >= IMU_PERIOD_US) {  // 跟 IMU 一樣 200Hz 更新
+      float dt = (now - lastHoldUs) * 1e-6f;
+      lastHoldUs = now;
+      if (dt > 0.05f) dt = 0.05f;
+      float err = holdYaw - yawDeg;  // 正 = 車頭偏右了，要往左修
+      if (err > 180) err -= 360;
+      else if (err < -180) err += 360;
+      if (fabsf(err) > HOLD_MAX_ERR_DEG) {
+        holdActive = false;
+        holdGaveUp = true;
+        holdCorr = 0;
+        Serial.println(F("L heading hold off: error >45deg (bumped, or IMU_YAW_SIGN wrong)"));
+      } else {
+        holdI += err * dt;
+        if (holdKi > 0) {  // 抗積分飽和：積分項最多佔修正上限的一半
+          float lim = HOLD_MAX_CORR / 2 / holdKi;
+          holdI = constrain(holdI, -lim, lim);
+        }
+        holdCorr = holdKp * err + holdKi * holdI - holdKd * rateDps;
+        holdCorr = constrain(holdCorr, -HOLD_MAX_CORR, HOLD_MAX_CORR);
+      }
+    }
+  }
+  int16_t ang = holdActive ? (int16_t)lroundf(holdCorr) : cmdAng;
+  cmdLeft = constrain(cmdLin - ang, -255, 255);
+  cmdRight = constrain(cmdLin + ang, -255, 255);
+}
 
 #if defined(ARDUINO_ARCH_AVR)
 // ---- PWM ----
@@ -306,30 +360,37 @@ static void applyMotors() {
 
 // 急停（S、指令逾時）：不經過加減速，直接放掉（TB6612 IN1=IN2=L 是滑行，不會有煞車電流）
 static void stopNow() {
+  cmdLin = cmdAng = 0;
+  holdActive = false;
   cmdLeft = cmdRight = outLeft = outRight = 0;
+  outLeftQ = outRightQ = 0;
   applyMotors();
 }
 
-// 加減速限制：輸出每次最多往目標靠近 255 * 經過時間 / rampMs。
-// 突然全速或正反轉會抽大電流，電壓掉下來、雜訊變大，IMU 讀值會受影響
-static int16_t rampToward(int16_t out, int16_t target, int16_t step) {
-  if (target > out) return target - out > step ? out + step : target;
-  return out - target > step ? out - step : target;
+// 梯形加減速：離開 0（加速）每秒最多變化 255*1000/accelMs，往 0（減速）用 decelMs；
+// 要反轉時先用減速斜率降到 0，再用加速斜率往反方向。輸出用 1/256 PWM 的定點數累積，慢斜率也不會被吃掉。
+// 突然全速或正反轉會抽大電流，電池電壓掉下來（Pi 會重開）、雜訊變大，IMU 讀值也會受影響
+static int32_t rampWheel(int32_t q, int16_t target, uint32_t el) {
+  int32_t t = (int32_t)target << 8;
+  if (q == t) return q;
+  bool slowing = (q > 0 && t < q) || (q < 0 && t > q);
+  if (slowing && ((q > 0 && t < 0) || (q < 0 && t > 0))) t = 0;  // 反轉：先停到 0
+  uint16_t ms = slowing ? decelMs : accelMs;
+  uint32_t step = ms == 0 ? (510UL << 8) : el * (255UL * 256UL / 4) / (ms * 250UL);  // = el*255*256/(ms*1000)，避免溢位
+  if (t > q) return t - q > (int32_t)step ? q + (int32_t)step : t;
+  return q - t > (int32_t)step ? q - (int32_t)step : t;
 }
 
 static void rampUpdate() {
   uint32_t now = micros();
   uint32_t el = now - lastRampUs;
-  if (outLeft == cmdLeft && outRight == cmdRight) {
-    lastRampUs = now;
-    return;
-  }
-  uint32_t step = rampMs == 0 ? 510 : el * 255UL / (rampMs * 1000UL);
-  if (step > 510) step = 510;
-  if (step == 0) return;  // 還不到 1 格，等累積
   lastRampUs = now;
-  outLeft = rampToward(outLeft, cmdLeft, step);
-  outRight = rampToward(outRight, cmdRight, step);
+  if (outLeft == cmdLeft && outRight == cmdRight) return;
+  if (el > 50000) el = 50000;  // 迴圈卡住過久也不要一口氣跳太多
+  outLeftQ = rampWheel(outLeftQ, cmdLeft, el);
+  outRightQ = rampWheel(outRightQ, cmdRight, el);
+  outLeft = outLeftQ / 256;   // 往 0 截斷，到目標時剛好整除
+  outRight = outRightQ / 256;
   applyMotors();
 }
 
@@ -385,13 +446,11 @@ static void handleLine(char *s) {
   switch (s[0]) {
     case 'V':  // V <線速度> <角速度>，-255~255；角速度正 = 左轉
       if (sscanf(s + 1, "%d %d", &a, &b) == 2) {
-        a = constrain(a, -255, 255);
-        b = constrain(b, -255, 255);
-        cmdLeft = constrain(a - b, -255, 255);
-        cmdRight = constrain(a + b, -255, 255);
+        cmdLin = constrain(a, -255, 255);  // 左右輪目標由 mixUpdate() 算（含航向保持修正）
+        cmdAng = constrain(b, -255, 255);
         lastCmdMs = millis();
-        if (cmdLeft || cmdRight) lastNonzeroMs = lastCmdMs;
-        if (!motorsAllowed && (cmdLeft || cmdRight)) {
+        if (cmdLin || cmdAng) lastNonzeroMs = lastCmdMs;
+        if (!motorsAllowed && (cmdLin || cmdAng)) {
           static uint32_t lastWarn = 0;
           if (millis() - lastWarn > 2000) { lastWarn = millis(); reportMotorWarning(); }
         }
@@ -400,12 +459,35 @@ static void handleLine(char *s) {
     case 'S':
       stopNow();
       break;
-    case 'A':  // A <ms>：加減速限制，PWM 0→255 花的時間，0 = 不限制
-      if (sscanf(s + 1, "%d", &a) == 1) {
-        rampMs = constrain(a, 0, 5000);
-        Serial.print("L ramp ");
-        Serial.print(rampMs);
-        Serial.println(" ms");
+    case 'A':  // A <加速ms> [減速ms]：PWM 0→255 花的時間，0 = 不限制；只給一個數 = 加減速都設成它
+      {
+        int n = sscanf(s + 1, "%d %d", &a, &b);
+        if (n >= 1) {
+          accelMs = constrain(a, 0, 5000);
+          decelMs = n == 2 ? constrain(b, 0, 5000) : accelMs;
+        }
+        Serial.print(F("L ramp accel "));
+        Serial.print(accelMs);
+        Serial.print(F(" decel "));
+        Serial.print(decelMs);
+        Serial.println(F(" ms"));
+      }
+      break;
+    case 'G':  // G <kp*100> <ki*100> <kd*100>：直線航向保持增益，全 0 = 關閉（AVR 的 sscanf 不支援 %f）
+      {
+        int c = 0;
+        if (sscanf(s + 1, "%d %d %d", &a, &b, &c) == 3) {
+          holdKp = max(a, 0) / 100.0f;
+          holdKi = max(b, 0) / 100.0f;
+          holdKd = max(c, 0) / 100.0f;
+          holdActive = false;
+        }
+        Serial.print(F("L hold kp="));
+        Serial.print(holdKp, 2);
+        Serial.print(F(" ki="));
+        Serial.print(holdKi, 2);
+        Serial.print(F(" kd="));
+        Serial.println(holdKd, 2);
       }
       break;
     case 'Z':  // 航向角歸零並重新估計偏移（車子要靜止）
@@ -565,10 +647,11 @@ void loop() {
   }
 
   // 安全機制：太久沒收到指令就停車
-  if ((cmdLeft || cmdRight || outLeft || outRight) && millis() - lastCmdMs > CMD_TIMEOUT_MS) {
+  if ((cmdLin || cmdAng || outLeft || outRight) && millis() - lastCmdMs > CMD_TIMEOUT_MS) {
     stopNow();
     Serial.println("L cmd timeout, stop");
   }
+  mixUpdate();
   rampUpdate();
 
   // 安全機制：Pi 沒有任何指令進來就關吸塵器
