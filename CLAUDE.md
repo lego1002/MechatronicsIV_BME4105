@@ -56,6 +56,11 @@ plus a microcontroller that drives the motors and reads sensors. Details are in 
   current surges can't pull down (or a separate power bank), with a big cap on VM. `cam.sh` now opens the camera by
   `/dev/v4l/by-id` so it recovers if it re-enumerates as another `/dev/videoN`. Read undervoltage via the
   `rpi_volt` hwmon `in0_lcrit_alarm`, not `get_throttled` (deprecated, dumps a WARNING trace into dmesg on this kernel).
+- **2026-11-13: fan (vacuum relay) on → IMU lost, = wiring, not EMI.** With D8 LOW, SCL (A5) reads low 1000/1000
+  (SDA stays high) even after `Wire.end()`, and SCL follows D8 within 0–500µs, before the relay contacts can close
+  (~10ms). So A5 is electrically tied to the relay control side (bridge/wire between A5 and D8 / relay IN / coil
+  driver). User to continuity-check A5↔D8/relay IN with power off. `I` now also prints SDA/SCL low-counts (idle and
+  with the MCU's TWI released) to diagnose this kind of thing.
 - IMU mounting: only gyro-z is used, and yaw rate is the same anywhere on a rigid body, so an off-center IMU is fine.
   It must be level and rigidly mounted.
 
@@ -122,6 +127,10 @@ Devlogs go in `docs/devlog/YYYY-MM-DD.md` (Traditional Chinese).
 
 ## Next steps / open items
 
+0. **In progress (2026-11-13):** user is soldering the vacuum relay off the perfboard: IN → Nano **D12** header, VCC/GND
+   straight to Nano 5V/GND headers. Then set `PIN_VACUUM 12` in `config.h` (keep D8 as INPUT), flash, rerun the fan
+   test (fan on → `I` must show SCL 0/1000, no `imu lost`). Battery: user to measure per-cell voltages (suspect 3S BMS
+   cutting out on overcurrent/unbalanced cell). See `docs/devlog/2026-11-13.md`.
 1. Confirm Nano wiring with the user, wire the MPU6050, check `L imu ok` + yaw via `./monitor.sh 5`.
 2. Test motors on the Nano (direction per side, PWM deadband, STBY on A0), then the full teleop path (`./ros2_ws/run.sh` + browser).
 3. Update top-level `README.md` (still says Nucleo/ACM0; the user had in-progress edits there, so ask before rewriting) and

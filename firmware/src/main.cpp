@@ -529,6 +529,29 @@ static void handleLine(char *s) {
         }
       }
       Serial.println(" (MPU6050 = 0x68/0x69)");
+      {
+        // 閒置時 SDA/SCL 應該一直是高：取樣 1000 次數低電位次數。
+        // 一直低 = 有東西把線拉住（IMU 卡住／沒電）；偶爾低 = 雜訊打進來
+        // 第二輪先 Wire.end() 放開 MCU 自己的 I2C 硬體：如果線還是低，就是外面（IMU 或接線）拉住的
+        for (uint8_t pass = 0; pass < 2; pass++) {
+          if (pass == 1) Wire.end();
+          uint16_t sdaLow = 0, sclLow = 0;
+          for (uint16_t i = 0; i < 1000; i++) {
+            if (!digitalRead(SDA)) sdaLow++;
+            if (!digitalRead(SCL)) sclLow++;
+            delayMicroseconds(10);
+          }
+          Serial.print(pass ? F("L i2c released, low SDA ") : F("L i2c idle low SDA "));
+          Serial.print(sdaLow);
+          Serial.print(F("/1000 SCL "));
+          Serial.print(sclLow);
+          Serial.println(F("/1000"));
+        }
+        Wire.begin();
+#if defined(ARDUINO_ARCH_AVR)
+        Wire.setWireTimeout(3000, true);
+#endif
+      }
       break;
     case 'B':
       Serial.println("L buzzer not wired yet");
