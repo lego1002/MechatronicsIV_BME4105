@@ -8,8 +8,8 @@ cd "$(dirname "$0")"
 IMG=vacuum-ros2
 docker image inspect $IMG >/dev/null 2>&1 || docker build -t $IMG ../docker/ros2
 
-# 微控制器：Arduino Nano（FT232R / CH340）或 Nucleo（ST-LINK），容器裡一律對應到 /dev/ttyACM0
-DEV=$(ls /dev/serial/by-id/usb-FTDI_* /dev/serial/by-id/usb-1a86_* /dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_* 2>/dev/null | head -1)
+# 微控制器：Arduino UNO/Nano（FT232R / CH340 / 原廠 UNO 16U2）或 Nucleo（ST-LINK），容器裡一律對應到 /dev/ttyACM0
+DEV=$(ls /dev/serial/by-id/usb-FTDI_* /dev/serial/by-id/usb-1a86_* /dev/serial/by-id/usb-Arduino* /dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_* 2>/dev/null | head -1)
 DEV_ARGS=()
 if [ -n "$DEV" ]; then
   DEV_ARGS=(--device="$(readlink -f "$DEV")":/dev/ttyACM0 --group-add "$(getent group dialout | cut -d: -f3)")

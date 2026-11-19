@@ -1,6 +1,7 @@
 #!/bin/bash
 # 燒錄
-#   ./flash.sh          Nano：編譯後用 avrdude 經 USB 序列埠燒錄（會自動重開）
+#   ./flash.sh          UNO（預設）：編譯後用 avrdude 經 USB 序列埠燒錄（會自動重開）
+#   ./flash.sh nano     Arduino Nano（同上）
 #   ./flash.sh nucleo   Nucleo：把 firmware.bin 複製到隨身碟 NODE_L432KC，ST-LINK 自動寫入並重開
 set -e
 cd "$(dirname "$0")"
@@ -14,6 +15,7 @@ if [ "$1" = "nucleo" ]; then
   exit 0
 fi
 
+ENV=${1:-uno}
 . ./port.sh
 PORT=$(find_port)
 [ -n "$PORT" ] || { echo "找不到 Nano 的序列埠，有插上 USB 嗎？"; exit 1; }
@@ -24,5 +26,5 @@ docker image inspect vacuum-pio >/dev/null 2>&1 || docker build -t vacuum-pio ..
 mkdir -p ~/.platformio
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   --device="$PORT" --group-add "$(getent group dialout | cut -d: -f3)" \
-  -v ~/.platformio:/pio -v "$PWD":/fw vacuum-pio pio run -e nano -t upload --upload-port "$PORT"
-echo "已燒錄到 $PORT"
+  -v ~/.platformio:/pio -v "$PWD":/fw vacuum-pio pio run -e "$ENV" -t upload --upload-port "$PORT"
+echo "已燒錄（$ENV）到 $PORT"

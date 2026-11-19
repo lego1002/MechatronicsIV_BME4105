@@ -30,19 +30,20 @@ PlatformIO + Arduino 框架。Pi 上不用裝工具鏈，編譯在 Docker 裡進
 - IMU 偶發 I²C 錯誤直接跳過那一筆，連續 10 次失敗才當作斷線；重連後沿用原本的偏移和航向，不會在車子移動時重新校正
 - I2C 有逾時（線鬆掉不會卡死），IMU 斷線會每秒自動重試
 
-## 接線（Arduino Nano）
+## 接線（Arduino UNO／Nano，腳位相同）
 
 | 元件 | 腳位 | 備註 |
 |---|---|---|
 | MPU6050 SDA / SCL | A4 / A5 | VCC 接 5V（GY-521 模組上有穩壓） |
 | TB6612 PWMA / PWMB | D6 / D7 | 右 / 左馬達（`MOTOR_SWAP_LR`）。D6 = Timer0 硬體 PWM；D7 沒有硬體 PWM，用 Timer1 中斷模擬（都是 976Hz） |
 | TB6612 AIN1 / AIN2 | A3 / A2 | |
-| TB6612 BIN1 / BIN2 | A1 / A0 | |
+| TB6612 BIN1 / BIN2 | A0 / A1 | 2026-11-12 對調（左輪原本反轉） |
 | TB6612 STBY | 3.3V | 常駐致能，停車靠 PWM=0 |
 | TB6612 VCC | 5V | VM 接馬達電池，GND 要和 Nano 共地 |
 | 板載 LED | D13 | 校正中快閃、正常慢閃、IMU 錯誤恆亮 |
-| 吸塵器繼電器 IN | D8 | JQC-3FF-S-Z，實測 D8 LOW 才吸合（`VACUUM_ON_LEVEL` = LOW，改成高電位觸發要改這個值）。電池 + 接 COM，NO 接吸塵器 + |
-| 保留 | D2~D5、D9~D12 | 超音波、蜂鳴器（D9/D10 被 Timer1 佔用，不能當 PWM） |
+| 吸塵器繼電器 IN | **D12** | 2026-11-13 從 D8 改到 D12（洞洞板上 D8 和 A5/SCL 連通，風扇一開 IMU 就掉線）；繼電器 VCC/GND 直接接 Nano 5V/GND 排針。D8 不再使用（保持輸入）。JQC-3FF-S-Z，實測 LOW 才吸合（`VACUUM_ON_LEVEL` = LOW，改成高電位觸發要改這個值）。電池 + 接 COM，NO 接吸塵器 + |
+| 相機搖臂伺服 訊號 | **D9** | MG90S（180 度，500~2400µs）。用 Timer2 中斷產生 50Hz 脈衝（Servo.h 會佔 Timer1，和 D7 軟體 PWM 衝突，所以不用）；因此 D3/D11 不能 analogWrite。紅 = 5V（建議獨立 5V 降壓，不要只靠 UNO 的 5V），棕 = GND（要和 UNO 共地） |
+| 保留 | D2~D5、D10、D11 | 超音波、蜂鳴器（D9/D10 被 Timer1 佔用、D3/D11 被 Timer2 佔用，都不能 analogWrite） |
 
 注意：Pi 每次打開序列埠（例如啟動 bridge）Nano 都會自動重開，約 1.5 秒後才開始送資料。
 
@@ -62,6 +63,8 @@ I\n                                       掃描 I²C（除錯用）；另外回
 R\n                                       重新開機（看開機訊息用）
 H <0|1>\n                                 測試用，故意卡死：0 = 等看門狗重開，1 = 關掉看門狗，等 DTR 重置（僅 Nano）
 F <0|1>\n                                 吸塵器關／開，回 `L vacuum on|off`；2 秒沒收到任何指令會自動關閉
+C <角度 0~180 | -1>\n                      相機搖臂伺服：轉到該角度（限速 150°/s），-1 = 放鬆不送脈衝；回 `L cam N` / `L cam off`
+                                          開機時不送脈衝，等 Pi 送 C（bridge 連線和收到 L boot 時會補送）
 B <0|1>\n                                 蜂鳴器（還沒接）
 ```
 

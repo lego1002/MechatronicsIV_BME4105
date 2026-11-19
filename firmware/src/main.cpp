@@ -437,6 +437,88 @@ static void vacuumInit() {
   pinMode(PIN_VACUUM, OUTPUT);
 }
 
+// ---------------- 相機搖臂伺服馬達 ----------------
+// AVR：Timer2 CTC 模式、除頻 64（每 tick 4µs），在比較中斷裡切換腳位：
+// 高電位 = 脈寬，低電位 = 20ms 減脈寬。8 位元計時器一次最多 256 tick，所以長的時段分段數；
+// 分段時最後一段不少於 63 tick，中斷裡改 OCR2A 時計數器才不會已經超過（CTC 模式 OCR2A 沒有雙緩衝）。
+// 脈衝邊緣都由硬體計時決定，只受中斷延遲影響（幾 µs，< 1 度）。
+static int16_t camTargetX10 = -1;   // 目標角度 ×10，-1 = 放鬆（不送脈衝）
+static int16_t camPosX10 = -1;      // 目前送出的角度 ×10（依 CAM_SERVO_DPS 慢慢追目標）
+static uint32_t camStepMs = 0;
+
+#if defined(ARDUINO_ARCH_AVR)
+static const uint16_t SERVO_FRAME_TICKS = 5000;  // 20ms
+static volatile uint16_t servoPulseTicks = 0;     // 0 = 不輸出
+static volatile uint8_t *servoPort;
+static uint8_t servoMask;
+
+ISR(TIMER2_COMPA_vect) {
+  static uint16_t remain = 0, cur = 0;
+  static bool high = false;
+  if (remain == 0) {
+    if (high) {
+      *servoPort &= ~servoMask;
+      high = false;
+      remain = SERVO_FRAME_TICKS - cur;
+    } else {
+      cur = servoPulseTicks;
+      if (cur) {
+        *servoPort |= servoMask;
+        high = true;
+        remain = cur;
+      } else {
+        remain = SERVO_FRAME_TICKS;
+      }
+    }
+  }
+  uint16_t n = remain > 500 ? 250 : remain > 250 ? remain / 2 : remain;
+  OCR2A = n - 1;
+  remain -= n;
+}
+
+static void camInit() {
+  if (PIN_CAM_SERVO < 0) return;
+  pinMode(PIN_CAM_SERVO, OUTPUT);
+  digitalWrite(PIN_CAM_SERVO, LOW);
+  servoPort = portOutputRegister(digitalPinToPort(PIN_CAM_SERVO));
+  servoMask = digitalPinToBitMask(PIN_CAM_SERVO);
+  // Arduino 的 init() 把 Timer2 設成 D3/D11 的 PWM；這裡改成 CTC，所以 D3/D11 不能再用 analogWrite
+  TCCR2A = _BV(WGM21);
+  TCCR2B = _BV(CS22);  // Timer2 的 CS22 = 除頻 64
+  TCNT2 = 0;
+  OCR2A = 249;
+  TIMSK2 = _BV(OCIE2A);
+}
+
+static void camOutput(int16_t x10) {
+  uint16_t ticks = 0;
+  if (x10 >= 0) {
+    uint32_t us = CAM_SERVO_MIN_US + (uint32_t)(CAM_SERVO_MAX_US - CAM_SERVO_MIN_US) * x10 / 1800;
+    ticks = us / 4;
+  }
+  noInterrupts();
+  servoPulseTicks = ticks;
+  interrupts();
+}
+#else
+static void camInit() {}
+static void camOutput(int16_t) {}
+#endif
+
+static void camUpdate() {
+  if (millis() - camStepMs < 20) return;
+  camStepMs = millis();
+  if (camPosX10 == camTargetX10) return;
+  if (camTargetX10 < 0 || camPosX10 < 0) {
+    camPosX10 = camTargetX10;  // 放鬆，或第一次（不知道實際位置）：直接跳過去
+  } else {
+    const int16_t step = (int32_t)CAM_SERVO_DPS * 20 * 10 / 1000;
+    int16_t d = camTargetX10 - camPosX10;
+    camPosX10 += d > step ? step : d < -step ? -step : d;
+  }
+  camOutput(camPosX10);
+}
+
 // ---------------- 序列埠指令 ----------------
 static char line[48];
 static uint8_t lineLen = 0;
@@ -566,6 +648,21 @@ static void handleLine(char *s) {
         Serial.println(vacuumOn ? "L vacuum on" : "L vacuum off");
       }
       break;
+    case 'C':  // C <角度 0~180>：相機搖臂；C -1 = 放鬆（不送脈衝）
+      if (sscanf(s + 1, "%d", &a) == 1) {
+        if (PIN_CAM_SERVO < 0) {
+          Serial.println(F("L cam not wired"));
+          break;
+        }
+        camTargetX10 = a < 0 ? -1 : constrain(a, 0, 180) * 10;
+        if (camTargetX10 < 0) {
+          Serial.println(F("L cam off"));
+        } else {
+          Serial.print(F("L cam "));
+          Serial.println(camTargetX10 / 10);
+        }
+      }
+      break;
     default:
       Serial.print("L unknown cmd: ");
       Serial.println(s);
@@ -598,6 +695,7 @@ void setup() {
   wdt_disable();
 #endif
   vacuumInit();
+  camInit();
   Serial.begin(SERIAL_BAUD);
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -676,6 +774,7 @@ void loop() {
   }
   mixUpdate();
   rampUpdate();
+  camUpdate();
 
   // 安全機制：Pi 沒有任何指令進來就關吸塵器
   if (vacuumOn && millis() - lastRxMs > VACUUM_TIMEOUT_MS) {

@@ -1,6 +1,7 @@
 #!/bin/bash
 # 用 Docker 裡的 PlatformIO 編譯韌體（第一次會下載工具鏈，約幾分鐘）
-#   ./build.sh                    編譯 Nano（預設）
+#   ./build.sh                    編譯 UNO（預設）
+#   ./build.sh -e nano            編譯 Nano
 #   ./build.sh -e nucleo_l432kc   編譯 Nucleo
 set -e
 cd "$(dirname "$0")"

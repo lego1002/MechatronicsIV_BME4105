@@ -37,8 +37,16 @@
   .spd button { padding: 6px 14px; font-size: 18px; }
   #help { font-size: 12px; line-height: 1.6; text-align: right; }
   #help kbd { font: inherit; font-weight: 700; color: var(--ok); }
+  #cam { top: 10px; right: 10px; font-size: 14px; display: flex; flex-direction: column; gap: 6px; }
+  #cam .row { display: flex; gap: 6px; align-items: center; }
+  #cam button { padding: 8px 12px; font-size: 15px; flex: 1; white-space: nowrap; }
+  #cam button.cur { background: var(--ok); color: #000; font-weight: 700; }
+  #cam.saving [data-preset] { outline: 2px dashed var(--warn); }
+  #camSave.on { background: var(--warn); color: #000; }
+  #camTxt { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; }
   @media (hover: none) { #help { display: none; } }
   @media (max-width: 520px) { #stats { top: auto; bottom: 200px; } }
+  @media (max-width: 1000px) { #cam { top: 130px; } }  /* 窄螢幕放到航向 HUD 下面，避免重疊 */
 </style>
 </head>
 <body>
@@ -63,6 +71,20 @@
   <div id="cmdTxt">指令：0 / 0</div>
 </div>
 
+<div id="cam" class="panel">
+  <div class="row">相機搖臂 <span style="flex:1"></span><b id="camTxt">--</b></div>
+  <div class="row">
+    <button data-preset="cruise" title="快捷鍵 1">巡航</button>
+    <button data-preset="paper" title="快捷鍵 2（鏡頭壓低）">看紙片</button>
+    <button data-preset="red" title="快捷鍵 3（鏡頭抬高）">看紅點</button>
+  </div>
+  <div class="row">
+    <button data-cam="-5" title="快捷鍵 V">−5°</button>
+    <button data-cam="5" title="快捷鍵 R">+5°</button>
+    <button id="camSave" title="按這個，再按一個模式：把目前角度存成那個模式">存成模式</button>
+  </div>
+</div>
+
 <div id="log" class="panel"></div>
 
 <div id="joy"><div id="knob"></div></div>
@@ -71,8 +93,9 @@
   <div id="help" class="panel">
     <div>移動（按住）<kbd>U I O</kbd> / <kbd>J L</kbd> / <kbd>M , .</kbd> 或方向鍵</div>
     <div>停車 <kbd>K</kbd> 或空白鍵</div>
-    <div>加／減速 全部 <kbd>Q</kbd>/<kbd>Z</kbd> · 線速度 <kbd>W</kbd>/<kbd>X</kbd> · 角速度 <kbd>E</kbd>/<kbd>C</kbd></div>
+    <div>加／減速 全部 <kbd>Q</kbd>/<kbd>Z</kbd> 或 <kbd>+</kbd>/<kbd>−</kbd> · 線速度 <kbd>W</kbd>/<kbd>X</kbd> · 角速度 <kbd>E</kbd>/<kbd>C</kbd></div>
     <div>歸零 <kbd>0</kbd> · 吸塵器 <kbd>F</kbd></div>
+    <div>相機 巡航 <kbd>1</kbd> · 看紙片 <kbd>2</kbd> · 看紅點 <kbd>3</kbd> · 微調 <kbd>R</kbd>/<kbd>V</kbd></div>
   </div>
   <div class="spd panel">線速度 <button data-lin="-5" aria-label="線速度減少">−</button><b id="linTxt"></b><button data-lin="5" aria-label="線速度增加">+</button></div>
   <div class="spd panel">角速度 <button data-ang="-5" aria-label="角速度減少">−</button><b id="angTxt"></b><button data-ang="5" aria-label="角速度增加">+</button></div>
@@ -138,6 +161,7 @@ function showTelemetry(m) {
   showVacuum(m.vac);
   accMs = m.acc;
   $('accTxt').textContent = m.acc == null ? '--' : (m.acc / 1000).toFixed(1) + 's';
+  showCam(m);
   drawTape();
 }
 // 按鈕只顯示韌體回報的實際狀態，不是按下去就算數
@@ -175,6 +199,30 @@ function drawTape() {
 window.addEventListener('resize', drawTape);
 drawTape();
 
+// ---------- 相機搖臂 ----------
+// 顯示韌體回報的角度；還沒回報（Nano 沒接）就顯示伺服器的目標角度加問號
+let camT = null, camSaving = false;
+function showCam(m) {
+  camT = m.camt;
+  $('camTxt').textContent = m.cam == null ? `${m.camt}°?` : m.cam < 0 ? '放鬆' : m.cam + '°';
+  for (const b of document.querySelectorAll('[data-preset]')) {
+    const deg = m.camp[b.dataset.preset];
+    b.classList.toggle('cur', deg === m.camt);
+    b.dataset.deg = deg;
+    b.title = b.title.replace(/ · \d+°$/, '') + ` · ${deg}°`;
+  }
+}
+function camPreset(name) {
+  if (camSaving) { send({ t: 'cam_save', name }); camSaveMode(false); }
+  else send({ t: 'cam_preset', name });
+}
+function camStep(d) { if (camT != null) send({ t: 'cam', deg: Math.max(0, Math.min(180, camT + d)) }); }
+function camSaveMode(on) { camSaving = on; $('cam').classList.toggle('saving', on); $('camSave').classList.toggle('on', on); }
+for (const b of document.querySelectorAll('[data-preset]')) b.onclick = () => camPreset(b.dataset.preset);
+for (const b of document.querySelectorAll('[data-cam]')) b.onclick = () => camStep(+b.dataset.cam);
+$('camSave').onclick = () => camSaveMode(!camSaving);
+const CAM_KEYS = { Digit1: 'cruise', Numpad1: 'cruise', Digit2: 'paper', Numpad2: 'paper', Digit3: 'red', Numpad3: 'red' };
+
 // ---------- 控制 ----------
 const keys = new Set();
 let joy = null;  // {v, w}，-1~1
@@ -192,7 +240,8 @@ adjustSpeed(0, 0);
 const MOVE = { KeyU: [1, 1], KeyI: [1, 0], KeyO: [1, -1], KeyJ: [0, 1], KeyL: [0, -1],
                KeyM: [-1, -1], Comma: [-1, 0], Period: [-1, 1],
                ArrowUp: [1, 0], ArrowDown: [-1, 0], ArrowLeft: [0, 1], ArrowRight: [0, -1] };
-const SPEED = { KeyQ: [5, 5], KeyZ: [-5, -5], KeyW: [5, 0], KeyX: [-5, 0], KeyE: [0, 5], KeyC: [0, -5] };
+// +/- 同 Q/Z（線、角一起調）；主鍵盤的 + 跟 = 同一顆鍵，有沒有按 Shift 都算
+const SPEED = { KeyQ: [5, 5], KeyZ: [-5, -5], Equal: [5, 5], Minus: [-5, -5], NumpadAdd: [5, 5], NumpadSubtract: [-5, -5], KeyW: [5, 0], KeyX: [-5, 0], KeyE: [0, 5], KeyC: [0, -5] };
 const clamp1 = x => Math.max(-1, Math.min(1, x));
 
 function currentCmd() {
@@ -234,6 +283,10 @@ window.addEventListener('keydown', e => {
   if (c === 'Space' || c === 'KeyK') { stop(); e.preventDefault(); }
   else if (c === 'Digit0' || c === 'Numpad0') { if (!e.repeat) send({ t: 'zero' }); }
   else if (c === 'KeyF') { if (!e.repeat) toggleVacuum(); }
+  else if (CAM_KEYS[c]) { if (!e.repeat) camPreset(CAM_KEYS[c]); }
+  else if (c === 'KeyR') camStep(5);
+  else if (c === 'KeyV') camStep(-5);
+  else if (c === 'Escape') camSaveMode(false);
   // 忽略自動重複：不然按住移動鍵時按停車，下一次重複又會讓車子動起來
   else if (MOVE[c]) { if (!e.repeat) keys.add(c); e.preventDefault(); }
   else if (SPEED[c]) { adjustSpeed(...SPEED[c]); e.preventDefault(); }

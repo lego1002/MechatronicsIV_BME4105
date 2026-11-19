@@ -16,7 +16,7 @@ SSID=$(iwgetid -r 2>/dev/null)
 stream_up() { pgrep -x mediamtx >/dev/null; }
 ros_up()    { docker ps -q -f name=^vacuum-ros2$ 2>/dev/null | grep -q .; }
 cam_dev()   { ls /dev/v4l/by-id/usb-046d_081b_*-video-index0 2>/dev/null | head -1; }
-mcu_dev()   { ls /dev/serial/by-id/usb-FTDI_* /dev/serial/by-id/usb-1a86_* /dev/serial/by-id/usb-STMicroelectronics_* 2>/dev/null | head -1; }
+mcu_dev()   { ls /dev/serial/by-id/usb-FTDI_* /dev/serial/by-id/usb-1a86_* /dev/serial/by-id/usb-Arduino* /dev/serial/by-id/usb-STMicroelectronics_* 2>/dev/null | head -1; }
 # 串流有沒有真的在出畫面（MediaMTX API 的 ready 欄位）
 stream_ready() { curl -s -m 1 127.0.0.1:9997/v3/paths/get/cam 2>/dev/null | grep -q '"ready":true'; }
 

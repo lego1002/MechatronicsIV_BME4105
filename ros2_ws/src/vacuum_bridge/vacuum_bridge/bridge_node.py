@@ -3,6 +3,7 @@
 訂閱  /cmd_vel        geometry_msgs/Twist   linear.x、angular.z 範圍 -1~1（滿速的比例，angular 正 = 左轉）
       /vacuum/cmd    std_msgs/Bool         吸塵器開關
       /motor/accel_ms std_msgs/UInt16      加速時間（PWM 0→255 的 ms，0 = 不限制）；Nano 重開後會自動補送
+      /camera/tilt_cmd std_msgs/Int16      相機搖臂角度 0~180（-1 = 放鬆）；Nano 重開後會自動補送
 發布  /imu/yaw        std_msgs/Float32      航向角（度，-180~180，逆時針為正）
       /imu/yaw_rate   std_msgs/Float32      角速度（度/秒）
       /mcu/status     std_msgs/UInt8        0 正常 / 1 IMU 校正中 / 2 IMU 錯誤 / 255 序列埠斷線
@@ -10,6 +11,7 @@
       /mcu/rtt_ms     std_msgs/Float32      Pi <-> Nano 來回延遲
       /vacuum/state   std_msgs/Bool         吸塵器實際狀態（以韌體回報為準，latched）
       /motor/accel_state std_msgs/UInt16    韌體回報的實際加速時間 ms（latched）
+      /camera/tilt    std_msgs/Int16        韌體回報的相機搖臂目標角度（-1 = 放鬆，latched）
 服務  /imu/zero       std_srvs/Trigger      航向角歸零（車子要靜止 2 秒）
 """
 import threading
@@ -20,7 +22,7 @@ import serial
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
-from std_msgs.msg import Bool, Float32, String, UInt8, UInt16
+from std_msgs.msg import Bool, Float32, Int16, String, UInt8, UInt16
 from std_srvs.srv import Trigger
 
 
@@ -34,6 +36,7 @@ class Bridge(Node):
         # 梯形加減速（韌體 A 指令）；網頁改的加速值存在這裡，Nano 重開後補送
         self.accel_ms = self.declare_parameter('accel_ms', 800).value
         self.decel_ms = self.declare_parameter('decel_ms', 300).value
+        self.cam_deg = None  # 最後一次要求的相機搖臂角度，Nano 重開後補送
 
         self.pub_yaw = self.create_publisher(Float32, 'imu/yaw', 10)
         self.pub_rate = self.create_publisher(Float32, 'imu/yaw_rate', 10)
@@ -47,6 +50,8 @@ class Bridge(Node):
         self.create_subscription(Twist, 'cmd_vel', self.on_cmd, 10)
         self.create_subscription(UInt16, 'motor/accel_ms', self.on_accel, 10)
         self.create_subscription(Bool, 'vacuum/cmd', self.on_vacuum, 10)
+        self.pub_cam = self.create_publisher(Int16, 'camera/tilt', latched)
+        self.create_subscription(Int16, 'camera/tilt_cmd', self.on_cam, 10)
         self.create_service(Trigger, 'imu/zero', self.on_zero)
 
         self.ser = None
@@ -79,6 +84,7 @@ class Bridge(Node):
                 # 打開序列埠不一定會重開 Nano（見 CLAUDE.md 的 -hupcl），這裡明確關掉，狀態才會一致
                 self.write('F 0')
                 self.send_ramp()
+                self.send_cam()
                 self.pub_vacuum.publish(Bool(data=False))
                 last_rx = time.monotonic()
                 while rclpy.ok():
@@ -133,10 +139,17 @@ class Bridge(Node):
                 self.pub_vacuum.publish(Bool(data=False))
             if parts[1].startswith('boot'):
                 self.send_ramp()  # Nano 重開會回到韌體預設值，補送目前設定
+                self.send_cam()
             elif parts[1].startswith('ramp accel '):  # 「L ramp accel 800 decel 300 ms」
                 try:
                     self.pub_accel.publish(UInt16(data=int(parts[1].split()[2])))
                 except (ValueError, IndexError):
+                    pass
+            elif parts[1].startswith('cam '):  # 「L cam 90」「L cam off」
+                v = parts[1][4:]
+                try:
+                    self.pub_cam.publish(Int16(data=-1 if v == 'off' else int(v)))
+                except ValueError:
                     pass
         elif parts[0] == 'P' and len(parts) == 2:
             t0 = self.ping_sent.pop(parts[1], None)
@@ -159,6 +172,14 @@ class Bridge(Node):
 
     def send_ramp(self):
         self.write(f'A {self.accel_ms} {self.decel_ms}')
+
+    def on_cam(self, msg):
+        self.cam_deg = -1 if msg.data < 0 else min(180, msg.data)
+        self.send_cam()
+
+    def send_cam(self):
+        if self.cam_deg is not None:
+            self.write(f'C {self.cam_deg}')
 
     def send_cmd(self):
         v, w = self.cmd if time.monotonic() - self.cmd_time < self.cmd_timeout else (0, 0)

@@ -18,6 +18,8 @@ ros2_ws/log/
 
 # 網頁遙控密碼（run.sh 自動產生）
 ros2_ws/teleop_password
+# 相機搖臂模式角度（網頁上存的）
+ros2_ws/camera_presets.json
 
 # Python
 __pycache__/

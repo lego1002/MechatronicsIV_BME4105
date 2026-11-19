@@ -9,6 +9,10 @@ WebSocket 要帶 ?k=<token> 才接受，所以沒密碼的人不能直接連 /ws
 
 瀏覽器 -> 伺服器  {"t":"cmd","v":-1~1,"w":-1~1}   {"t":"zero"}   {"t":"vacuum","on":bool}   {"t":"ping","id":n}
                   {"t":"accel","ms":n}（加速時間，PWM 0→255 的毫秒數）
+                  {"t":"cam","deg":n}（相機搖臂角度 0~180）  {"t":"cam_preset","name":"cruise|paper|red"}
+                  {"t":"cam_save","name":...}（把目前角度存成這個模式）
+相機搖臂模式的角度存在 presets_file（預設 /ws/camera_presets.json = ros2_ws/camera_presets.json，不進 git），
+啟動時自動轉到「巡航」。
 伺服器 -> 瀏覽器  {"t":"tel",...} 25Hz           {"t":"pong","id":n}   {"t":"log","msg":...}
 """
 import asyncio
@@ -28,8 +32,12 @@ from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
-from std_msgs.msg import Bool, Float32, String, UInt8, UInt16
+from std_msgs.msg import Bool, Float32, Int16, String, UInt8, UInt16
 from std_srvs.srv import Trigger
+
+
+# 相機搖臂預設模式（角度 0~180），網頁上可以改並存檔。實際角度要看搖臂怎麼裝，第一次用請在網頁上校正
+CAM_PRESETS = {'cruise': 90, 'paper': 60, 'red': 120}
 
 
 class Teleop(Node):
@@ -39,7 +47,19 @@ class Teleop(Node):
         self.cmd_timeout = self.declare_parameter('cmd_timeout', 0.3).value
         self.password = self.declare_parameter('password', os.environ.get('TELEOP_PASSWORD', '')).value
 
-        self.state = {'yaw': 0.0, 'rate': 0.0, 'st': 255, 'rtt': None, 'vac': False, 'acc': None}
+        self.presets_file = self.declare_parameter('presets_file', '/ws/camera_presets.json').value
+        self.presets = dict(CAM_PRESETS)
+        try:
+            with open(self.presets_file) as f:
+                saved = json.load(f)
+            self.presets.update({k: int(v) for k, v in saved.items() if k in CAM_PRESETS})
+        except (OSError, ValueError, TypeError):
+            pass
+        self.cam_target = self.presets['cruise']
+
+        # cam = 韌體回報的搖臂角度（-1 放鬆、None 未知），camp = 各模式角度
+        self.state = {'yaw': 0.0, 'rate': 0.0, 'st': 255, 'rtt': None, 'vac': False, 'acc': None,
+                      'cam': None, 'camt': self.cam_target, 'camp': self.presets}
         self.logs = []
         self.cmd = (0.0, 0.0)
         self.cmd_time = 0.0
@@ -53,6 +73,10 @@ class Teleop(Node):
         self.create_subscription(Bool, 'vacuum/state', lambda m: self.state.update(vac=m.data), latched)
         self.create_subscription(UInt16, 'motor/accel_state', lambda m: self.state.update(acc=m.data), latched)
         self.pub_accel = self.create_publisher(UInt16, 'motor/accel_ms', 10)
+        self.create_subscription(Int16, 'camera/tilt', lambda m: self.state.update(cam=m.data), latched)
+        self.pub_cam = self.create_publisher(Int16, 'camera/tilt_cmd', 10)
+        # 啟動時轉到巡航角度（等 1 秒讓 bridge 的訂閱連上；bridge 會記住，Nano 重開後自動補送）
+        self.cam_init_timer = self.create_timer(1.0, self.cam_init)
         self.pub_cmd = self.create_publisher(Twist, 'cmd_vel', 10)
         self.pub_vacuum = self.create_publisher(Bool, 'vacuum/cmd', 10)
         self.zero_client = self.create_client(Trigger, 'imu/zero')
@@ -75,6 +99,23 @@ class Teleop(Node):
 
     def set_accel(self, ms):
         self.pub_accel.publish(UInt16(data=max(0, min(5000, int(ms)))))
+
+    def cam_init(self):
+        self.cam_init_timer.cancel()
+        self.set_cam(self.cam_target)
+
+    def set_cam(self, deg):
+        self.cam_target = max(0, min(180, int(deg)))
+        self.state['camt'] = self.cam_target
+        self.pub_cam.publish(Int16(data=self.cam_target))
+
+    def save_preset(self, name):
+        self.presets[name] = self.cam_target
+        try:
+            with open(self.presets_file, 'w') as f:
+                json.dump(self.presets, f, indent=1)
+        except OSError as e:
+            self.get_logger().warn(f'存相機模式失敗：{e}')
 
     def zero(self):
         if self.zero_client.service_is_ready():
@@ -128,6 +169,12 @@ def serve(node):
                     node.set_vacuum(m.get('on') is True)
                 elif t == 'accel' and isinstance(m.get('ms'), (int, float)):
                     node.set_accel(m['ms'])
+                elif t == 'cam' and isinstance(m.get('deg'), (int, float)):
+                    node.set_cam(m['deg'])
+                elif t == 'cam_preset' and m.get('name') in node.presets:
+                    node.set_cam(node.presets[m['name']])
+                elif t == 'cam_save' and m.get('name') in node.presets:
+                    node.save_preset(m['name'])
         finally:
             clients.discard(ws)
             if not clients:  # 沒有人在看了：停車、關吸塵器

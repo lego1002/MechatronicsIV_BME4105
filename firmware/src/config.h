@@ -21,9 +21,18 @@
 #define PIN_BIN2  A1
 #define PIN_STBY  -1   // STBY 直接接 3.3V（常駐致能，停車靠 PWM=0）
 // ---- 吸塵器繼電器（JQC-3FF-S-Z，馬達接 COM/NO）----
-#define PIN_VACUUM       8
-#define VACUUM_ON_LEVEL  LOW   // 實測 D8 LOW 吸塵器才會轉（2026-11-06）；如果改成高電位觸發，這裡改成 HIGH
-// D2~D5、D9~D12 保留給超音波／蜂鳴器（A6/A7 只能類比輸入）
+// 2026-11-13 改接 D12（繼電器移出洞洞板，VCC/GND 直接接 Nano 5V/GND）。
+// 原本的 D8 和 A5(SCL) 之間有電氣連通，D8 一拉低 SCL 就跟著低、IMU 掉線；D8 現在不用，保持開機預設的 INPUT（高阻抗）
+#define PIN_VACUUM       12
+#define VACUUM_ON_LEVEL  LOW   // 實測低電位吸塵器才會轉（2026-11-06，當時在 D8）；如果改成高電位觸發，這裡改成 HIGH
+// ---- 相機搖臂伺服馬達（MG90S 金屬齒，180 度）----
+// 用 Timer2 中斷產生 50Hz 脈衝（不用 Arduino 的 Servo.h：它佔 Timer1，會和 D7 的軟體 PWM 衝突）。
+// Timer2 只有 tone() 會用到，這個韌體沒用 tone()。訊號腳可以是任何數位腳
+#define PIN_CAM_SERVO     9
+#define CAM_SERVO_MIN_US  500    // 0 度的脈寬
+#define CAM_SERVO_MAX_US  2400   // 180 度的脈寬（MG90S 規格約 500~2400µs）
+#define CAM_SERVO_DPS     150    // 轉動速度上限（度/秒），慢一點畫面不會晃、也不會瞬間抽大電流
+// D2~D5、D10、D11 保留給超音波／蜂鳴器（A6/A7 只能類比輸入）；D8 勿用（見上）
 
 #else
 // ================= STM32 Nucleo-L432KC =================
@@ -51,6 +60,8 @@
 
 #define PIN_VACUUM       -1     // Nucleo 沒接吸塵器
 #define VACUUM_ON_LEVEL  HIGH
+#define PIN_CAM_SERVO    -1     // Nucleo 沒接相機搖臂
+#define CAM_SERVO_DPS    150
 #endif
 
 #define CMD_TIMEOUT_MS   300    // 超過這麼久沒收到指令就停車
