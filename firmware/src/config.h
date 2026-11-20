@@ -20,22 +20,28 @@
 #define PIN_BIN1  A1   // 新板還沒確認方向：輪子反轉就把這兩個對調（或對調馬達線）
 #define PIN_BIN2  A0
 #define PIN_STBY  8    // v2 板 STBY 接 D8，開機拉高致能
-// ---- 吸塵風扇（IRLZ44N MOSFET 低側開關）----
-// D5 → 220Ω → 閘極，10kΩ 下拉。高電位 = 風扇轉
+// ---- 吸塵風扇 ----
+// F 指令同時切換下面兩個輸出，哪台車接哪一種都能用；沒接的設成 -1
+// (1) v2.2 洞洞板的 IRLZ44N MOSFET 低側開關：D5 → 220Ω → 閘極，10kΩ 下拉，高電位 = 風扇轉
 #define PIN_VACUUM       5
 #define VACUUM_ON_LEVEL  HIGH
+// (2) 繼電器模組（JQC-3FF-S-Z，風扇接 COM/NO）：IN 接 D12，VCC/GND 接 UNO 5V/GND。
+//     舊車實測低電位才吸合（2026-11-06）；換成高電位觸發的模組就改成 HIGH
+#define PIN_VACUUM_RELAY       12
+#define VACUUM_RELAY_ON_LEVEL  LOW
 // ---- 相機搖臂伺服馬達（SG90／MG90S，180 度）----
 // 用 Timer2 中斷產生 50Hz 脈衝（不用 Arduino 的 Servo.h：它佔 Timer1，會讓 D9/D10 的馬達 PWM 失效）。
-// Timer2 只有 tone() 會用到，這個韌體沒用 tone()。因此 D3/D11 不能 analogWrite（D3 是超音波 ECHO，只當數位輸入，沒影響）
+// Timer2 只有 tone() 會用到，這個韌體沒用 tone()。因此 D3/D11 不能 analogWrite（D3 是超音波 ECHO、D11 是伺服，都只當數位腳用，沒影響）
 // 伺服電源接 Mini560 的 5V 輸出（洞洞板 S9/S12），不要接 UNO 的 5V
-#define PIN_CAM_SERVO     12
+// 2026-11-20 從 D12 移到 D11（D12 改接吸塵器繼電器）
+#define PIN_CAM_SERVO     11
 #define CAM_SERVO_MIN_US  500    // 0 度的脈寬
 #define CAM_SERVO_MAX_US  2400   // 180 度的脈寬（MG90S 規格約 500~2400µs；SG90 若轉不到底可改 1000/2000）
 #define CAM_SERVO_DPS     150    // 轉動速度上限（度/秒），慢一點畫面不會晃、也不會瞬間抽大電流
 // ---- 保留（韌體還沒實作）----
 // 前超音波 TRIG/ECHO = D4/D2、右超音波 TRIG/ECHO = D7/D3
 // 電池分壓（10k/3.3k）接在 Nano 的 A6；UNO 沒有 A6，換 UNO 後暫時讀不到電池電壓
-// D11、D13（板載 LED）其餘空著
+// D6、D13（板載 LED）其餘空著
 
 #else
 // ================= STM32 Nucleo-L432KC =================

@@ -39,6 +39,10 @@ plus a microcontroller that drives the motors and reads sensors. Details are in 
   Timer2 ISR). Reserved/unimplemented on the board: front HC-SR04 TRIG/ECHO = D4/D2, right = D7/D3; battery divider
   10k/3.3k on A6 (Nano only, UNO has no A6). Wheel direction on the new board not yet verified. Everything below
   about D6/D7/D12-relay/STBY-3.3V describes the old v1 board.
+- **2026-11-20 (later still): user moved to the v1 car, also on an UNO, wired with the SAME v2.2 pins** (D9/D10/D8/A0–A3),
+  plus a fan **relay on D12** (JQC-3FF, active LOW, `PIN_VACUUM_RELAY`/`VACUUM_RELAY_ON_LEVEL`). `F` drives both the
+  D5 MOSFET and the D12 relay, so one firmware fits both cars. **Camera servo moved D12 → D11** (still Timer2 ISR;
+  D11 only used as a digital pin). Free: D6, D13 (LED). Not yet tested on hardware.
 - Motor driver: TB6612FNG, 2 DC motors (differential drive). The old docs mention L298N/Uno: outdated.
 - Camera: Logitech C310 on the Pi.
 - **Nano wiring confirmed by the user (2026-10-17, soldered perfboard)**, see `firmware/src/config.h`:

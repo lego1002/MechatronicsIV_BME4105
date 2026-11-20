@@ -426,20 +426,27 @@ static void reportMotorWarning() {
   Serial.println("L motors disabled: BIN1/BIN2 shorted to I2C (IMU must be on D0/D1, keep D4/D5 unconnected)");
 }
 
-// ---------------- 吸塵器（繼電器）----------------
+// ---------------- 吸塵器（MOSFET 和／或繼電器，F 指令同時切換兩個）----------------
+#ifndef PIN_VACUUM_RELAY
+#define PIN_VACUUM_RELAY       -1
+#define VACUUM_RELAY_ON_LEVEL  LOW
+#endif
+#define HAS_VACUUM (PIN_VACUUM >= 0 || PIN_VACUUM_RELAY >= 0)
 static bool vacuumOn = false;
 static uint32_t lastRxMs = 0;
 
 static void setVacuum(bool on) {
   vacuumOn = on;
   if (PIN_VACUUM >= 0) digitalWrite(PIN_VACUUM, on ? VACUUM_ON_LEVEL : !VACUUM_ON_LEVEL);
+  if (PIN_VACUUM_RELAY >= 0) digitalWrite(PIN_VACUUM_RELAY, on ? VACUUM_RELAY_ON_LEVEL : !VACUUM_RELAY_ON_LEVEL);
 }
 
 static void vacuumInit() {
-  if (PIN_VACUUM < 0) return;
-  // 先設好關閉電位再切成輸出，低電位觸發的模組才不會在開機時吸合一下
+  if (!HAS_VACUUM) return;
+  // 先設好關閉電位再切成輸出，低電位觸發的繼電器模組才不會在開機時吸合一下
   setVacuum(false);
-  pinMode(PIN_VACUUM, OUTPUT);
+  if (PIN_VACUUM >= 0) pinMode(PIN_VACUUM, OUTPUT);
+  if (PIN_VACUUM_RELAY >= 0) pinMode(PIN_VACUUM_RELAY, OUTPUT);
 }
 
 // ---------------- 相機搖臂伺服馬達 ----------------
@@ -645,7 +652,7 @@ static void handleLine(char *s) {
       break;
     case 'F':  // F <0|1>：吸塵器開關
       if (sscanf(s + 1, "%d", &a) == 1) {
-        if (PIN_VACUUM < 0) {
+        if (!HAS_VACUUM) {
           Serial.println("L vacuum not wired");
           break;
         }
