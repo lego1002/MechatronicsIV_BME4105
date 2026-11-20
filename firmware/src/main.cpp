@@ -410,6 +410,11 @@ static void motorsInit(bool bridgesShorted) {
   pinMode(PIN_BIN2, OUTPUT);
   pwmInit(0, PIN_PWMA);
   pwmInit(1, PIN_PWMB);
+#if defined(ARDUINO_ARCH_AVR) && defined(MOTOR_PWM_31K) && MOTOR_PWM_31K
+  // Timer1 的 PWM 腳（D9/D10）：Arduino 預設除頻 64（490Hz），改成不除頻 ≈ 31.4kHz（TB6612 上限 100kHz）
+  if ((PIN_PWMA == 9 || PIN_PWMA == 10) && (PIN_PWMB == 9 || PIN_PWMB == 10))
+    TCCR1B = (TCCR1B & 0b11111000) | _BV(CS10);
+#endif
   if (PIN_STBY >= 0) {
     pinMode(PIN_STBY, OUTPUT);
     digitalWrite(PIN_STBY, HIGH);

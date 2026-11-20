@@ -9,30 +9,33 @@
 #define I2C_HZ        100000  // 杜邦線＋弱上拉，400kHz 不穩
 #define IMU_YAW_SIGN  (+1)    // 晶片正面朝上：逆時針（左轉）為正。裝反了改成 -1
 
-// ---- TB6612FNG ----（洞洞板實際焊線）
-// PWMA = D6 是 Timer0 硬體 PWM（976Hz，和 millis() 共用計時器，不能改頻率）
-// PWMB = D7 沒有硬體 PWM，用 Timer1 中斷模擬（同樣 976Hz），所以 D9/D10 不能再拿來當 PWM
-#define PIN_PWMA  6    // 右馬達（A 通道）
-#define PIN_PWMB  7    // 左馬達（B 通道）
+// ---- TB6612FNG ----（v2.2 洞洞板，2026-11-20 換新板＋UNO 後的接線）
+// PWMA = D9、PWMB = D10 都是 Timer1 硬體 PWM；開機時把 Timer1 改成 31kHz（MOTOR_PWM_31K），馬達不會嘯叫
+#define PIN_PWMA  9    // 右馬達（A 通道，接洞洞板右馬達端子）
+#define PIN_PWMB  10   // 左馬達（B 通道）
 #define MOTOR_SWAP_LR  1  // 1 = A 通道接右馬達、B 通道接左馬達
+#define MOTOR_PWM_31K  1  // 1 = Timer1 不除頻（phase-correct 8-bit ≈ 31.4kHz）；0 = Arduino 預設 490Hz
 #define PIN_AIN1  A3
 #define PIN_AIN2  A2
-#define PIN_BIN1  A0   // 2026-11-12 左輪方向相反，BIN1/BIN2 對調（原本 A1/A0）
-#define PIN_BIN2  A1
-#define PIN_STBY  -1   // STBY 直接接 3.3V（常駐致能，停車靠 PWM=0）
-// ---- 吸塵器繼電器（JQC-3FF-S-Z，馬達接 COM/NO）----
-// 2026-11-13 改接 D12（繼電器移出洞洞板，VCC/GND 直接接 Nano 5V/GND）。
-// 原本的 D8 和 A5(SCL) 之間有電氣連通，D8 一拉低 SCL 就跟著低、IMU 掉線；D8 現在不用，保持開機預設的 INPUT（高阻抗）
-#define PIN_VACUUM       12
-#define VACUUM_ON_LEVEL  LOW   // 實測低電位吸塵器才會轉（2026-11-06，當時在 D8）；如果改成高電位觸發，這裡改成 HIGH
-// ---- 相機搖臂伺服馬達（MG90S 金屬齒，180 度）----
-// 用 Timer2 中斷產生 50Hz 脈衝（不用 Arduino 的 Servo.h：它佔 Timer1，會和 D7 的軟體 PWM 衝突）。
-// Timer2 只有 tone() 會用到，這個韌體沒用 tone()。訊號腳可以是任何數位腳
-#define PIN_CAM_SERVO     9
+#define PIN_BIN1  A1   // 新板還沒確認方向：輪子反轉就把這兩個對調（或對調馬達線）
+#define PIN_BIN2  A0
+#define PIN_STBY  8    // v2 板 STBY 接 D8，開機拉高致能
+// ---- 吸塵風扇（IRLZ44N MOSFET 低側開關）----
+// D5 → 220Ω → 閘極，10kΩ 下拉。高電位 = 風扇轉
+#define PIN_VACUUM       5
+#define VACUUM_ON_LEVEL  HIGH
+// ---- 相機搖臂伺服馬達（SG90／MG90S，180 度）----
+// 用 Timer2 中斷產生 50Hz 脈衝（不用 Arduino 的 Servo.h：它佔 Timer1，會讓 D9/D10 的馬達 PWM 失效）。
+// Timer2 只有 tone() 會用到，這個韌體沒用 tone()。因此 D3/D11 不能 analogWrite（D3 是超音波 ECHO，只當數位輸入，沒影響）
+// 伺服電源接 Mini560 的 5V 輸出（洞洞板 S9/S12），不要接 UNO 的 5V
+#define PIN_CAM_SERVO     12
 #define CAM_SERVO_MIN_US  500    // 0 度的脈寬
-#define CAM_SERVO_MAX_US  2400   // 180 度的脈寬（MG90S 規格約 500~2400µs）
+#define CAM_SERVO_MAX_US  2400   // 180 度的脈寬（MG90S 規格約 500~2400µs；SG90 若轉不到底可改 1000/2000）
 #define CAM_SERVO_DPS     150    // 轉動速度上限（度/秒），慢一點畫面不會晃、也不會瞬間抽大電流
-// D2~D5、D10、D11 保留給超音波／蜂鳴器（A6/A7 只能類比輸入）；D8 勿用（見上）
+// ---- 保留（韌體還沒實作）----
+// 前超音波 TRIG/ECHO = D4/D2、右超音波 TRIG/ECHO = D7/D3
+// 電池分壓（10k/3.3k）接在 Nano 的 A6；UNO 沒有 A6，換 UNO 後暫時讀不到電池電壓
+// D11、D13（板載 LED）其餘空著
 
 #else
 // ================= STM32 Nucleo-L432KC =================

@@ -22,28 +22,33 @@ PlatformIO + Arduino 框架。Pi 上不用裝工具鏈，編譯在 Docker 裡進
 ## 功能
 
 - MPU6050 陀螺儀 z 軸 @200Hz 積分出航向角；開機靜止 2 秒估計偏移，靜止時持續追蹤偏移
-- TB6612FNG 雙馬達差速驅動（Nano：PWMA = D6 硬體 PWM，PWMB = D7 用 Timer1 中斷模擬，都是 976Hz）
+- TB6612FNG 雙馬達差速驅動（v2.2 板：PWMA = D9、PWMB = D10，Timer1 硬體 PWM 約 31kHz）
 - 安全機制：300ms 沒收到指令就停車
 - 防當機（Nano）：看門狗 500ms，主迴圈卡住就自動重開，重開後馬達和吸塵器都是關閉的，開機回報 `L reset cause: watchdog` 或 `other`（`other` = 上電、壓降、reset 鍵或 DTR，bootloader 不提供細分）。bridge 超過 3 秒沒收到資料會再用 DTR 硬體重置；重開後 IMU 要重新校正
-- 吸塵器：D8 控制繼電器，開機預設關閉；2 秒沒收到任何指令會自動關閉（`S` 和馬達逾時不會關吸塵器）
+- 吸塵器：D5 控制 MOSFET（高電位開），開機預設關閉；2 秒沒收到任何指令會自動關閉（`S` 和馬達逾時不會關吸塵器）
 - 梯形加減速（PWM 0→255：加速預設 800ms、減速 300ms，反轉時先減到 0 再加速；`A` 指令可調，網頁也能調加速）：避免突然全速／正反轉抽大電流拉垮電池、干擾 IMU
 - IMU 偶發 I²C 錯誤直接跳過那一筆，連續 10 次失敗才當作斷線；重連後沿用原本的偏移和航向，不會在車子移動時重新校正
 - I2C 有逾時（線鬆掉不會卡死），IMU 斷線會每秒自動重試
 
-## 接線（Arduino UNO／Nano，腳位相同）
+## 接線（v2.2 洞洞板，Arduino UNO／Nano 腳位相同）
+
+2026-11-20 換成 v2.2 新洞洞板＋Arduino UNO，接腳全部改過（舊板的 D6/D7 PWM、D12 繼電器、STBY 接 3.3V 都不再適用）。
 
 | 元件 | 腳位 | 備註 |
 |---|---|---|
-| MPU6050 SDA / SCL | A4 / A5 | VCC 接 5V（GY-521 模組上有穩壓） |
-| TB6612 PWMA / PWMB | D6 / D7 | 右 / 左馬達（`MOTOR_SWAP_LR`）。D6 = Timer0 硬體 PWM；D7 沒有硬體 PWM，用 Timer1 中斷模擬（都是 976Hz） |
+| MPU6050 SDA / SCL | A4 / A5 | 洞洞板 IMU 端子，VCC 接 5V |
+| TB6612 PWMA / PWMB | **D9 / D10** | 右 / 左馬達（`MOTOR_SWAP_LR`）。都是 Timer1 硬體 PWM，開機改成約 31kHz（`MOTOR_PWM_31K`，聽不到嘯叫） |
 | TB6612 AIN1 / AIN2 | A3 / A2 | |
-| TB6612 BIN1 / BIN2 | A0 / A1 | 2026-11-12 對調（左輪原本反轉） |
-| TB6612 STBY | 3.3V | 常駐致能，停車靠 PWM=0 |
-| TB6612 VCC | 5V | VM 接馬達電池，GND 要和 Nano 共地 |
+| TB6612 BIN1 / BIN2 | A1 / A0 | 新板方向還沒確認，輪子反轉就在 `config.h` 對調 |
+| TB6612 STBY | **D8** | 開機拉高 |
+| TB6612 VCC / VM | 5V / 動力 + | GND 要和 UNO、電池負極共地 |
+| 吸塵風扇 MOSFET | **D5** | IRLZ44N 低側開關（220Ω 到閘極、10kΩ 下拉），**高電位 = 開**。目前 MOSFET 損壞、風扇常轉，換新的之後 `F` 才有作用 |
+| 相機搖臂伺服 訊號 | **D12** | SG90／MG90S。Timer2 中斷產生 50Hz 脈衝（Servo.h 會佔 Timer1，讓 D9/D10 馬達 PWM 失效）；因此 D3/D11 不能 analogWrite。紅線接 Mini560 5V（洞洞板 S9），棕線接 GND（S12） |
 | 板載 LED | D13 | 校正中快閃、正常慢閃、IMU 錯誤恆亮 |
-| 吸塵器繼電器 IN | **D12** | 2026-11-13 從 D8 改到 D12（洞洞板上 D8 和 A5/SCL 連通，風扇一開 IMU 就掉線）；繼電器 VCC/GND 直接接 Nano 5V/GND 排針。D8 不再使用（保持輸入）。JQC-3FF-S-Z，實測 LOW 才吸合（`VACUUM_ON_LEVEL` = LOW，改成高電位觸發要改這個值）。電池 + 接 COM，NO 接吸塵器 + |
-| 相機搖臂伺服 訊號 | **D9** | MG90S（180 度，500~2400µs）。用 Timer2 中斷產生 50Hz 脈衝（Servo.h 會佔 Timer1，和 D7 軟體 PWM 衝突，所以不用）；因此 D3/D11 不能 analogWrite。紅 = 5V（建議獨立 5V 降壓，不要只靠 UNO 的 5V），棕 = GND（要和 UNO 共地） |
-| 保留 | D2~D5、D10、D11 | 超音波、蜂鳴器（D9/D10 被 Timer1 佔用、D3/D11 被 Timer2 佔用，都不能 analogWrite） |
+| 前超音波 TRIG / ECHO | D4 / D2 | 已焊端子，韌體還沒實作 |
+| 右超音波 TRIG / ECHO | D7 / D3 | 已焊端子，韌體還沒實作 |
+| 電池分壓 | A6（僅 Nano） | 10k / 3.3k。**UNO 沒有 A6**，換 UNO 後暫時讀不到電池電壓 |
+| 空著 | D11 | |
 
 注意：Pi 每次打開序列埠（例如啟動 bridge）Nano 都會自動重開，約 1.5 秒後才開始送資料。
 

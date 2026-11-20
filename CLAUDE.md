@@ -31,6 +31,14 @@ plus a microcontroller that drives the motors and reads sensors. Details are in 
   proposed by the agent (user didn't object); flashing/servo not yet tested on hardware (UNO wasn't plugged in).
   **Not installed yet: IMU and ultrasonics. The vacuum MOSFET is broken, so the fan is always on** (`F` does nothing).
   User said these don't matter for the 11/21 midterm; fix after. Expect `D` status 2 (IMU error) on the page.
+- **2026-11-20 (later): v2.2 perfboard + UNO, ALL pins changed** (designed in the user's claude.ai project; motors
+  confirmed spinning with a static test at PWMA=D9 AIN1=A3 AIN2=A2 PWMB=D10 BIN1=A1 BIN2=A0 STBY=D8). `config.h` AVR
+  section now: PWMA/PWMB = **D9/D10** (Timer1 HW PWM, retimed to ~31kHz in setup via `MOTOR_PWM_31K`; soft-PWM path
+  unused), A = right motor (`MOTOR_SWAP_LR 1`), STBY = **D8** (driven HIGH), vacuum = **D5** IRLZ44N low-side MOSFET,
+  **active HIGH** (MOSFET currently damaged → fan stuck on), camera servo moved **D9 → D12** (D9 is now PWMA; still
+  Timer2 ISR). Reserved/unimplemented on the board: front HC-SR04 TRIG/ECHO = D4/D2, right = D7/D3; battery divider
+  10k/3.3k on A6 (Nano only, UNO has no A6). Wheel direction on the new board not yet verified. Everything below
+  about D6/D7/D12-relay/STBY-3.3V describes the old v1 board.
 - Motor driver: TB6612FNG, 2 DC motors (differential drive). The old docs mention L298N/Uno: outdated.
 - Camera: Logitech C310 on the Pi.
 - **Nano wiring confirmed by the user (2026-10-17, soldered perfboard)**, see `firmware/src/config.h`:
